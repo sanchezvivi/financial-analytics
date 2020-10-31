@@ -1,0 +1,491 @@
+---
+title: "Volatilidade e VaR"
+author: "Viviane Sanchez"
+Institution: "Insper - Programa Avançado em Data Science"
+date: "10/31/2020"
+runtime: shiny
+output: html_document
+---
+
+# Introdução
+
+A apresentação deve ser sucinta, contendo principalmente as conclusões de cada passo. O script deverá ser entregue junto com a apresentação e deve ser de fácil leitura. A avaliação deve levar em conta principalmente a lógica e clareza da argumentação do modelo escolhido e os cálculos realizados.
+
+## Pacotes
+
+```{r setup, include=FALSE}
+
+library(tidyverse)
+library(tidyquant)
+library(tidymodels)
+library(tidytext)
+library(readxl)
+library(skimr)
+
+library(RcppRoll)
+library(bizdays)
+library(derivmkts)
+library(rugarch)
+library(tsibble)
+library(fable)
+library(forecast)
+
+library(ggrepel)
+library(highcharter)
+library(shiny)
+
+
+today <- Sys.Date()
+
+bizdays.options$set(default.calendar='Brazil/ANBIMA')
+
+theme_set(theme_minimal())
+theme_update(text = element_text(family = "Open Sans"),
+             plot.title = element_text(face = "bold", size = 23,
+                                       color = "#1d3752"))
+
+print(getwd())
+
+```
+
+## Objetivo
+
+escolher duas ações do índice IBOVESPA ou SP500
+
+# Dados
+
+Para consulta das ações listadas no IBOV, foi extraída a [lista de ações] do site B3 do dia 30/10/20. o.
+
+## Pré-processamento
+
+```{r echo=TRUE}
+
+ibov_raw <- list.files(path = 'data', 
+                      pattern = "Ibovespa.xlsx",
+                      full.names = TRUE) %>% 
+    map_df(~read_excel(.), guess_max = 2000)
+
+
+ibov <- ibov_raw %>% 
+  janitor::clean_names() %>% 
+  filter(str_detect(codigo, "\\d"))
+
+ticker_max <- ibov %>% 
+  filter(part_percent == max(part_percent)) %>% 
+  pull(codigo)
+
+ticker_min <- ibov %>% 
+  filter(part_percent == min(part_percent)) %>% 
+  pull(codigo)
+
+ibov_list <- ibov %>% 
+  select(codigo) %>% 
+  mutate(ticker = paste(codigo,'.SA', sep = '')) %>% 
+  pull(ticker)
+
+```
+
+O relatório será escrito baseando-se nas ações VALE3 `r ticker_max` e ECOR3 `r ticker_min`, que são as duas ações com maior e menor participação no índice, respectivamente. No entanto, o leitor poderá simular a análise com qualquer ação.
+
+Para consulta das séries de preços, será utilizado o pacote `tidyquant` e os dados disponíveis através do Yahoo! Finance
+
+```{r echo=TRUE}
+get_price <- function(ticker,i_date){
+    
+b3_ts <- tq_get(ticker, get = "stock.prices", from = i_date) %>% 
+         na.omit() # %>% 
+         #select(symbol, date, adjusted, open, high, low, volume)
+return(b3_ts)
+
+}
+
+```
+
+# Análise gráfica
+
+-   Análise gráfica dos preços e (log) retornos;
+
+## Preços
+
+```{r include=FALSE}
+
+ tickers <- c(paste(ticker_max,'.SA', sep = ''), paste(ticker_min,'.SA', sep = ''))
+ 
+ prices <- get_price(tickers, "2018-01-01") %>% 
+                   select(-close) %>% 
+                   rename(close = adjusted) %>% 
+            group_by(symbol) %>% 
+                   tq_mutate(select = close,
+                            mutate_fun = periodReturn,
+                            period = "daily",
+                            method = "log",
+                            col_rename = "daily_return") %>% 
+            mutate(return_acc = exp(cumsum(daily_return))-1,
+                    sq_return = daily_return^2) %>% 
+            ungroup()
+ 
+ highchart(type = "stock") %>%
+  hc_add_series(prices %>% select(-daily_return, -return_acc) %>% 
+                     filter(str_detect(symbol, ticker_max)), 
+                     type = "ohlc", hcaes(x = date),
+                     name = ticker_max, color = hex_to_rgba("lightblue", 1)) %>% 
+   hc_add_series(prices %>% select(-daily_return, -return_acc) %>%
+                   filter(str_detect(symbol, ticker_min)), type = "ohlc", 
+                   hcaes(x = date), name = ticker_min, color = "black") %>% 
+   hc_tooltip(valueDecimals = 2)
+ 
+```
+
+```{r echo=FALSE}
+
+selectInput("ticker_id", label = "Ação", choices = ibov_list,
+            multiple = T,
+            selected = c("VALE3.SA","ECOR3.SA")) #"^BVSP"
+
+dateRangeInput("date_id", label = "Selecione o período", 
+               start = "2018-01-18")
+
+actionButton("update_button", "Atualizar")
+
+```
+
+```{r echo=FALSE}
+
+prices_int <- reactive({input$update_button
+                  get_price(input$ticker_id, input$date_id) %>% 
+                    select(-close) %>% 
+                    rename(close = adjusted) %>% 
+                  group_by(symbol) %>% 
+                   tq_mutate(select = close,
+                            mutate_fun = periodReturn,
+                            period = "daily",
+                            method = "log",
+                            col_rename = "daily_return") %>% 
+                    mutate(return_acc = exp(cumsum(daily_return))-1,
+                           sq_return = daily_return^2)%>% 
+                    ungroup()
+                  })
+
+output$underlying <- renderHighchart({
+  
+  clicks <- input$update_button
+  
+  isolate({
+  
+    highchart(type = "stock") %>%
+      hc_add_series(prices_int() %>% select(-daily_return, -return_acc) %>% 
+                      filter(str_detect(symbol, input$ticker_id[1])), 
+                    type = "ohlc", 
+                    hcaes(x = date, group = symbol),
+                    name = input$ticker_id[1], color = hex_to_rgba("blue", 0.7)) %>% 
+    hc_add_series(prices_int() %>% select(-daily_return, -return_acc) %>% 
+                    filter(str_detect(symbol, input$ticker_id[2])), 
+                    type = "ohlc", 
+                    hcaes(x = date, group = symbol), 
+                    name = input$ticker_id[2], color = "black") %>% 
+      hc_tooltip(valueDecimals = 2)
+
+ })
+  
+})
+  
+highchartOutput("underlying")
+
+```
+
+## Retornos Logarítmicos
+
+### Diário
+
+```{r include=FALSE}
+
+prices %>% 
+  ggplot(aes(date, daily_return)) +
+  geom_line() +
+  facet_wrap(~symbol, nrow = 2, scales = "free")
+
+prices %>% 
+  ggplot(aes(date, return_acc, color = symbol)) +
+  geom_line()
+  
+
+
+prices %>% 
+      hchart(., "line", 
+             hcaes(x = date, y = daily_return*100, group = symbol)) %>% 
+      hc_plotOptions(column = list(stacking = "normal")) %>%
+      #hc_colors(cols) %>%
+      hc_tooltip(valueDecimals = 2) %>% 
+      hc_xAxis(title = list(text = "Data")) %>% 
+      hc_yAxis(title = list(text = "Retorno Diário"),
+               labels = list(format = "{value}%"))
+
+
+prices %>% 
+      hchart(., "line", 
+             hcaes(x = date, y = return_acc*100, group = symbol)) %>% 
+      hc_plotOptions(column = list(stacking = "normal")) %>%
+      #hc_colors(cols) %>%
+      hc_tooltip(valueDecimals = 2) %>% 
+      hc_xAxis(title = list(text = "Data")) %>% 
+      hc_yAxis(title = list(text = "Retorno Acumulado"),
+               labels = list(format = "{value}%"))
+
+
+prices %>% 
+      hchart(., "line", 
+             hcaes(x = date, y = sq_return*100, group = symbol)) %>% 
+      hc_plotOptions(column = list(stacking = "normal")) %>%
+      #hc_colors(cols) %>%
+      hc_tooltip(valueDecimals = 2) %>% 
+      hc_xAxis(title = list(text = "Data")) %>% 
+      hc_yAxis(title = list(text = "Proxy da Volatilidade"),
+               labels = list(format = "{value}%"))
+
+
+```
+
+
+```{r echo = FALSE}
+
+output$daily_returns <- renderHighchart({
+  
+clicks <- input$update_button
+    
+isolate({
+  
+  prices_int() %>% 
+    filter(symbol != "^BVSP") %>% 
+      hchart(., "line", 
+             hcaes(x = date, y = daily_return, group = symbol)) %>% 
+      #hc_colors(cols) %>%
+      hc_tooltip(valueDecimals = 2) %>% 
+      hc_xAxis(title = list(text = "Data")) %>% 
+      hc_yAxis(title = list(text = "Retorno Diário"),
+               labels = list(format = "{value}%"))
+  
+         })
+ })
+
+
+highchartOutput("daily_returns")
+
+```
+
+### Acumulado no período
+
+```{r echo=FALSE}
+
+output$acc_returns <- renderHighchart({
+  
+clicks <- input$update_button
+    
+isolate({
+
+  prices_int() %>% 
+      hchart(., "line", 
+             hcaes(x = date, y = return_acc, group = symbol)) %>% 
+      #hc_colors(cols) %>%
+      hc_tooltip(valueDecimals = 2) %>% 
+      hc_xAxis(title = list(text = "Data")) %>% 
+      hc_yAxis(title = list(text = "Retorno Acumulado"),
+               labels = list(format = "{value}%"))
+  
+         })
+ })
+
+
+highchartOutput("acc_returns")
+
+```
+
+### Quadrado dos retornos
+
+```{r echo = FALSE}
+
+output$sq_returns <- renderHighchart({
+  
+clicks <- input$update_button
+    
+isolate({
+
+  prices_int() %>% 
+      hchart(., "line", 
+             hcaes(x = date, y = sq_return*100, group = symbol)) %>% 
+      #hc_colors(cols) %>%
+      hc_tooltip(valueDecimals = 2) %>% 
+      hc_xAxis(title = list(text = "Data")) %>% 
+      hc_yAxis(title = list(text = "Proxy da Volatilidade"),
+               labels = list(format = "{value}%"))
+  
+         })
+ })
+
+
+highchartOutput("sq_returns")
+
+
+```
+
+
+## Testes
+
+### Raíz unitária
+
+https://otexts.com/fpp2/stationarity.html
+
+```{r include = FALSE}
+
+#DP_EUA <- read_csv("GDP_EUA.csv")
+#dp <- ts(GDP_EUA$NA000334Q,start=1947,frequency=4)
+#ecomposeGDP <- decompose(gdp,"multiplicative")
+#lot(decomposeGDP) 
+#eseas_gdp <- seasadj(decomposeGDP)
+#lot(diff(deseas_gdp))
+#lot(diff(gdp))
+
+#dfTest(deseas_gdp,12)
+#dfTest(gdp,12)
+
+```
+
+
+```{r include = FALSE}
+
+#library(urca)
+#
+#library(fUnitRoots)
+#
+#ts1 <- prices %>% 
+#  dplyr::filter(str_detect(symbol, ticker_max)) %>% 
+#  select(date, close)
+#
+#VALE3 <- ts1$close
+#
+#acf(VALE3)
+#
+#acf(diff(VALE3))
+#
+#plot(decompose(VALE3)) 
+#
+#
+#adfTest(ts1, 12)
+#  
+#
+#ts2 <- prices %>% 
+#  dplyr::filter(str_detect(symbol, ticker_min)) %>% 
+#  select(date, close) %>%
+#  as.ts()
+#
+#ggAcf(ts2)
+
+```
+
+### Normalidade
+
+```{r include = FALSE}
+
+prices %>% 
+  ggplot(aes(sample = daily_return, color = symbol)) +
+  geom_qq() +
+  geom_qq_line() +
+  facet_wrap(~symbol, scales = "free")
+
+```
+
+
+```{r}
+
+output$qq_plot <- renderPlot({
+  
+clicks <- input$update_button
+    
+isolate({
+
+  prices_int() %>% 
+   ggplot(aes(sample = daily_return, color = symbol)) +
+   geom_qq() +
+   geom_qq_line() +
+   facet_wrap(~symbol, scales = "free")
+  
+         })
+ })
+
+
+plotOutput("qq_plot")
+
+```
+
+
+```{r}
+
+```
+
+## Efeitos ARCH
+
+### Box-Jenkins
+
+#### Identificação
+
+Passos da metodologia Box-Jenkins para ajuste da média dos retornos, se necessário
+
+```{r include = FALSE}
+
+#acf(rets,main = "")
+#acf(rets, main = "",type = "partial")
+#
+#adf.test(rets)
+#
+```
+
+#### Estimação
+
+```{r}
+
+```
+
+
+#### Identificação
+
+```{r}
+
+```
+
+
+# Volatilidade
+
+Escolha, estimação e interpretação do modelo de volatilidade, incluindo: 
+escolha das ordens e modelo, análise de resíduos e coeficientes
+
+```{r}
+
+
+
+```
+
+# VaR
+
+## Ação
+
+Cálculo do VaR para o dia seguinte de cada ação, considerando uma posição comprada de R\$ 1MM;
+
+```{r}
+
+
+
+
+```
+
+## Carteira
+
+Cálculo aproximado do VaR da carteira usando correlação histórica.
+
+```{r}
+
+
+
+```
+
+# Referências
+
+[IBOV]((http://www.b3.com.br/pt_br/market-data-e-indices/indices/indices-amplos/indice-ibovespa-ibovespa-composicao-da-carteira.htm))
