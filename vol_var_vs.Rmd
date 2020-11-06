@@ -9,11 +9,15 @@ output: html_document
 
 # Introdução
 
-A apresentação deve ser sucinta, contendo principalmente as conclusões de cada passo. O script deverá ser entregue junto com a apresentação e deve ser de fácil leitura. A avaliação deve levar em conta principalmente a lógica e clareza da argumentação do modelo escolhido e os cálculos realizados.
+"A apresentação deve ser sucinta, contendo principalmente as conclusões de cada passo. O script deverá ser entregue junto com a apresentação e deve ser de fácil leitura. A avaliação deve levar em conta principalmente a lógica e clareza da argumentação do modelo escolhido e os cálculos realizados."
 
 ## Pacotes
 
 ```{r setup, include=FALSE}
+
+#knitr::opts_chunk$set(message = FALSE, warning = FALSE, 
+#                      fig.retina = 2 ,fig.height=5, fig.width=10)
+
 
 library(tidyverse)
 library(tidyquant)
@@ -29,10 +33,12 @@ library(rugarch)
 library(tsibble)
 library(fable)
 library(forecast)
+library(tseries)
 
 library(ggrepel)
 library(highcharter)
 library(shiny)
+library(knitr)
 
 
 today <- Sys.Date()
@@ -44,7 +50,13 @@ theme_update(text = element_text(family = "Open Sans"),
              plot.title = element_text(face = "bold", size = 23,
                                        color = "#1d3752"))
 
-print(getwd())
+hc_cols <- c("#7cb5ec", "#434348", "#90ed7d", "#f7a35c", 
+             "#8085e9", "#f15c80", "#e4d354", "#2b908f", 
+             "#f45b5b", "#91e8e1")
+
+
+
+#print(getwd())
 
 ```
 
@@ -85,9 +97,9 @@ ibov_list <- ibov %>%
 
 ```
 
-O relatório será escrito baseando-se nas ações VALE3 `r ticker_max` e ECOR3 `r ticker_min`, que são as duas ações com maior e menor participação no índice, respectivamente. No entanto, o leitor poderá simular a análise com qualquer ação.
+O relatório será escrito baseando-se nas ações `r ticker_max` e `r ticker_min`, que são as duas ações com maior e menor participação no índice, respectivamente. No entanto, o leitor poderá simular a análise com qualquer ação.
 
-Para consulta das séries de preços, será utilizado o pacote `tidyquant` e os dados disponíveis através do Yahoo! Finance
+Para consulta das séries de preços, será utilizado o pacote `tidyquant` e os dados disponíveis através do Yahoo! Finance. Para coleta e limpeza dos dados será utilizada a função a seguir:
 
 ```{r echo=TRUE}
 get_price <- function(ticker,i_date){
@@ -128,10 +140,10 @@ return(b3_ts)
   hc_add_series(prices %>% select(-daily_return, -return_acc) %>% 
                      filter(str_detect(symbol, ticker_max)), 
                      type = "ohlc", hcaes(x = date),
-                     name = ticker_max, color = hex_to_rgba("lightblue", 1)) %>% 
+                     name = ticker_max, color = hex_to_rgba("#7cb5ec", 1)) %>% 
    hc_add_series(prices %>% select(-daily_return, -return_acc) %>%
                    filter(str_detect(symbol, ticker_min)), type = "ohlc", 
-                   hcaes(x = date), name = ticker_min, color = "black") %>% 
+                   hcaes(x = date), name = ticker_min, color = "#434348") %>% 
    hc_tooltip(valueDecimals = 2)
  
 ```
@@ -177,12 +189,12 @@ output$underlying <- renderHighchart({
                       filter(str_detect(symbol, input$ticker_id[1])), 
                     type = "ohlc", 
                     hcaes(x = date, group = symbol),
-                    name = input$ticker_id[1], color = hex_to_rgba("blue", 0.7)) %>% 
+                    name = input$ticker_id[1], color = hex_to_rgba("#7cb5ec", 0.7)) %>% 
     hc_add_series(prices_int() %>% select(-daily_return, -return_acc) %>% 
                     filter(str_detect(symbol, input$ticker_id[2])), 
                     type = "ohlc", 
                     hcaes(x = date, group = symbol), 
-                    name = input$ticker_id[2], color = "black") %>% 
+                    name = input$ticker_id[2], color = "#434348") %>% 
       hc_tooltip(valueDecimals = 2)
 
  })
@@ -245,6 +257,7 @@ prices %>%
 
 ```
 
+No gráfico de retornos diários, nota-se a heteroscedasticidade (aglomeração de volatilidade)
 
 ```{r echo = FALSE}
 
@@ -324,64 +337,64 @@ isolate({
 
 highchartOutput("sq_returns")
 
-
 ```
-
 
 ## Testes
 
 ### Raíz unitária
 
-https://otexts.com/fpp2/stationarity.html
+<https://otexts.com/fpp2/stationarity.html>
 
 ```{r include = FALSE}
 
-#DP_EUA <- read_csv("GDP_EUA.csv")
-#dp <- ts(GDP_EUA$NA000334Q,start=1947,frequency=4)
-#ecomposeGDP <- decompose(gdp,"multiplicative")
-#lot(decomposeGDP) 
-#eseas_gdp <- seasadj(decomposeGDP)
-#lot(diff(deseas_gdp))
-#lot(diff(gdp))
-
-#dfTest(deseas_gdp,12)
-#dfTest(gdp,12)
-
+#ts_1 <- prices %>% 
+#    filter(str_detect(symbol, ticker_max)) %>% 
+#    select(date, daily_return)
+#
+#ts_2 <- prices %>% 
+#    filter(str_detect(symbol, ticker_min)) %>% 
+#    select(date, daily_return) %>% 
+#    as.ts()
+#
+#
+#par(mfrow=c(1,2))
+#acf(rvec_1, main = "")
+#acf(rvec_2,main = "")
+#
+#?acf
+#
+#ggAcf(rvec_1) +
+#  labs(title = ticker_max)
+#
+#ggAcf(rvec_2) +
+#  labs(title = ticker_min)
+#
+#
+#acf(rvec_1, main = "", type = "partial")
+#acf(rvec_1, main = "", type = "partial")
+#
 ```
 
 
-```{r include = FALSE}
+```{r}
 
-#library(urca)
-#
-#library(fUnitRoots)
-#
-#ts1 <- prices %>% 
-#  dplyr::filter(str_detect(symbol, ticker_max)) %>% 
-#  select(date, close)
-#
-#VALE3 <- ts1$close
-#
-#acf(VALE3)
-#
-#acf(diff(VALE3))
-#
-#plot(decompose(VALE3)) 
-#
-#
-#adfTest(ts1, 12)
-#  
-#
-#ts2 <- prices %>% 
-#  dplyr::filter(str_detect(symbol, ticker_min)) %>% 
-#  select(date, close) %>%
-#  as.ts()
-#
-#ggAcf(ts2)
+#ibrary(exuber)
+
+#r_1 <- radf(ts_1)
+
+#ummary(ur_1)
+
+#df.test(ts_1)
+
+
+#df.test(ts_2)
 
 ```
+
 
 ### Normalidade
+
+Como é possível ver nos gráficos abaixo, para ambas ações, os retornos não podem ser considerados normais.
 
 ```{r include = FALSE}
 
@@ -389,12 +402,13 @@ prices %>%
   ggplot(aes(sample = daily_return, color = symbol)) +
   geom_qq() +
   geom_qq_line() +
-  facet_wrap(~symbol, scales = "free")
+  scale_color_manual(values = hc_cols) +
+  facet_wrap(~symbol, scales = "free")+
+  labs(title = "Teste de Normalidade")
 
 ```
 
-
-```{r}
+```{r echo = FALSE}
 
 output$qq_plot <- renderPlot({
   
@@ -406,7 +420,9 @@ isolate({
    ggplot(aes(sample = daily_return, color = symbol)) +
    geom_qq() +
    geom_qq_line() +
-   facet_wrap(~symbol, scales = "free")
+   scale_color_manual(values = hc_cols) +
+   facet_wrap(~symbol, scales = "free") +
+   labs(title = "Teste de Normalidade")
   
          })
  })
@@ -416,8 +432,78 @@ plotOutput("qq_plot")
 
 ```
 
+A não normalidade dos retornos também é confirmada pela curtose maior do que 3 e presença de assimetria. Lembrando que pra uma distribuição normal, não há assimetria (skewness = 0) e a curtose é igual a 3. Para as ações analisadas inicialmente, nota-se que VALE3 possui uma assimetria e cauda mais pesada do que ECOR3.
 
-```{r}
+```{r include = FALSE}
+
+rvec_1 <- prices %>% 
+    filter(str_detect(symbol, ticker_max)) %>% 
+    select(daily_return) %>% 
+    as.vector()
+
+rvec_2 <- prices %>% 
+    filter(str_detect(symbol, ticker_min)) %>% 
+    select(daily_return) %>% 
+    as.vector() 
+
+
+skw_1 <- skewness(rvec_1)
+
+krt_1 <- kurtosis(rvec_1)
+
+skw_2 <- skewness(rvec_2)
+
+krt_2 <- kurtosis(rvec_2)
+
+
+nn_test <- tibble(ticker = c(ticker_max, ticker_min),
+       skewness = c(skw_1, skw_2),
+       kurtosis = c(krt_1, krt_2))
+
+nn_test %>% kable(digits = 2)
+
+```
+
+
+```{r echo = FALSE}
+
+output$normality_table <- renderTable({
+  
+clicks <- input$update_button
+
+isolate({
+
+rvec_1 <- prices_int() %>% 
+    filter(str_detect(symbol, input$ticker_id[1])) %>% 
+    select(daily_return) %>% 
+    as.vector()
+
+rvec_2 <- prices_int() %>% 
+    filter(str_detect(symbol, input$ticker_id[2])) %>% 
+    select(daily_return) %>% 
+    as.vector() 
+
+
+skw_1 <- skewness(rvec_1)
+
+krt_1 <- kurtosis(rvec_1)
+
+skw_2 <- skewness(rvec_2)
+
+krt_2 <- kurtosis(rvec_2)
+
+
+nn_test <- tibble(ticker = c(input$ticker_id[1], input$ticker_id[2]),
+       skewness = c(skw_1, skw_2),
+       kurtosis = c(krt_1, krt_2))
+
+nn_test
+
+})
+
+})
+
+tableOutput("normality_table")
 
 ```
 
@@ -444,18 +530,15 @@ Passos da metodologia Box-Jenkins para ajuste da média dos retornos, se necess�
 
 ```
 
-
 #### Identificação
 
 ```{r}
 
 ```
 
-
 # Volatilidade
 
-Escolha, estimação e interpretação do modelo de volatilidade, incluindo: 
-escolha das ordens e modelo, análise de resíduos e coeficientes
+Escolha, estimação e interpretação do modelo de volatilidade, incluindo: escolha das ordens e modelo, análise de resíduos e coeficientes
 
 ```{r}
 
@@ -467,7 +550,7 @@ escolha das ordens e modelo, análise de resíduos e coeficientes
 
 ## Ação
 
-Cálculo do VaR para o dia seguinte de cada ação, considerando uma posição comprada de R\$ 1MM;
+Cálculo do VaR para o dia seguinte de cada ação, considerando uma posição comprada de R$ 1MM;
 
 ```{r}
 
