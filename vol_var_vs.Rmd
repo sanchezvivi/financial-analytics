@@ -464,7 +464,6 @@ nn_test %>% kable(digits = 2)
 
 ```
 
-
 ```{r echo = FALSE}
 
 output$normality_table <- renderTable({
@@ -509,9 +508,76 @@ tableOutput("normality_table")
 
 ## Efeitos ARCH
 
-### Box-Jenkins
+Para verificar a presença de efeitos ARCH, é feito um teste Ljung-Box nas séries de quadrados dos retornos das duas ações:
 
-#### Identificação
+```{r include = FALSE}
+
+sqr_1 <- prices %>% 
+    filter(str_detect(symbol, ticker_max)) %>% 
+    select(sq_return) %>% 
+    as.vector()
+
+Box.test(sqr_1, lag=12, type="Ljung-Box")
+
+
+sqr_2 <- prices %>% 
+    filter(str_detect(symbol, ticker_min)) %>% 
+    select(sq_return) %>% 
+    as.vector() 
+
+Box.test(sqr_2, lag=12, type="Ljung-Box")
+
+```
+
+```{r echo=FALSE}
+
+renderPrint({
+  
+clicks <- input$update_button
+
+isolate({
+
+sqr_1 <- prices_int() %>% 
+    filter(str_detect(symbol, input$ticker_id[1])) %>% 
+    select(sq_return) %>% 
+    as.vector()
+
+Box.test(sqr_1, lag=12, type="Ljung-Box")
+
+})
+
+})
+
+```
+
+
+```{r echo=FALSE}
+
+renderPrint({
+  
+clicks <- input$update_button
+
+isolate({
+  
+sqr_2 <- prices_int() %>% 
+    filter(str_detect(symbol, input$ticker_id[2])) %>% 
+    select(sq_return) %>% 
+    as.vector() 
+
+Box.test(sqr_2, lag=12, type="Ljung-Box")
+
+})
+
+})
+
+
+```
+
+Como em ambos os casos o p-valor é menor do que 0.05, a hipótese nula é rejeitada. Há, portanto, **fortes indícios de efeitos ARCH**.
+
+## Box-Jenkins
+
+### Identificação
 
 Passos da metodologia Box-Jenkins para ajuste da média dos retornos, se necessário
 
@@ -522,19 +588,24 @@ Passos da metodologia Box-Jenkins para ajuste da média dos retornos, se necess�
 #
 #adf.test(rets)
 #
+
+
+#Box.test(resi,lag=20,type="Ljung")
 ```
 
-#### Estimação
+### Estimação
 
 ```{r}
 
 ```
 
-#### Identificação
+
+### Diagnóstico
 
 ```{r}
 
 ```
+
 
 # Volatilidade
 
