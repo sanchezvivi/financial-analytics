@@ -26,14 +26,18 @@ library(tidytext)
 library(readxl)
 library(skimr)
 
+library(sweep)
+library(timetk)
+
+
 library(RcppRoll)
 library(bizdays)
 library(derivmkts)
+
 library(rugarch)
-library(tsibble)
-library(fable)
 library(forecast)
 library(tseries)
+library(fDMA)
 
 library(ggrepel)
 library(highcharter)
@@ -46,9 +50,10 @@ today <- Sys.Date()
 bizdays.options$set(default.calendar='Brazil/ANBIMA')
 
 theme_set(theme_minimal())
-theme_update(text = element_text(family = "Open Sans"),
+theme_update(text = element_text(family = "Open Sans", size = 12),
              plot.title = element_text(face = "bold", size = 23,
-                                       color = "#1d3752"))
+                                       color = "#1d3752"),
+             legend.position = "bottom")
 
 hc_cols <- c("#7cb5ec", "#434348", "#90ed7d", "#f7a35c", 
              "#8085e9", "#f15c80", "#e4d354", "#2b908f", 
@@ -66,7 +71,7 @@ escolher duas ações do índice IBOVESPA ou SP500
 
 # Dados
 
-Para consulta das ações listadas no IBOV, foi extraída a [lista de ações] do site B3 do dia 30/10/20. o.
+Para consulta das ações listadas no IBOV, foi extraída a [lista de ações] do site B3 do dia 30/10/20.
 
 ## Pré-processamento
 
@@ -97,16 +102,16 @@ ibov_list <- ibov %>%
 
 ```
 
-O relatório será escrito baseando-se nas ações `r ticker_max` e `r ticker_min`, que são as duas ações com maior e menor participação no índice, respectivamente. No entanto, o leitor poderá simular a análise com qualquer ação.
+O relatório será escrito baseando-se nas ações `r ticker_max` e `r ticker_min`, que são as duas ações com maior e menor participação no índice, respectivamente. No entanto, este relatório permite a simulação da análise com qualquer ação.
 
-Para consulta das séries de preços, será utilizado o pacote `tidyquant` e os dados disponíveis através do Yahoo! Finance. Para coleta e limpeza dos dados será utilizada a função a seguir:
+Para consulta das séries de preços, será utilizado o pacote `tidyquant` e os dados disponíveis através do [Yahoo! Finance](http://finance.yahoo.com). Para coleta e limpeza dos dados será utilizada a função a seguir:
 
 ```{r echo=TRUE}
 get_price <- function(ticker,i_date){
     
 b3_ts <- tq_get(ticker, get = "stock.prices", from = i_date) %>% 
-         na.omit() # %>% 
-         #select(symbol, date, adjusted, open, high, low, volume)
+         na.omit()
+
 return(b3_ts)
 
 }
@@ -177,6 +182,7 @@ prices_int <- reactive({input$update_button
                            sq_return = daily_return^2)%>% 
                     ungroup()
                   })
+
 
 output$underlying <- renderHighchart({
   
@@ -339,58 +345,94 @@ highchartOutput("sq_returns")
 
 ```
 
+
+```{r}
+
+
+
+```
+
+
 ## Testes
 
 ### Raíz unitária
 
-<https://otexts.com/fpp2/stationarity.html>
+"Série com raiz unitária não é estacionária"
+
+[@Carol Alexander - II.5.3.4 Unit Root Tests]
 
 ```{r include = FALSE}
 
-#ts_1 <- prices %>% 
-#    filter(str_detect(symbol, ticker_max)) %>% 
-#    select(date, daily_return)
-#
-#ts_2 <- prices %>% 
-#    filter(str_detect(symbol, ticker_min)) %>% 
-#    select(date, daily_return) %>% 
-#    as.ts()
-#
-#
-#par(mfrow=c(1,2))
-#acf(rvec_1, main = "")
-#acf(rvec_2,main = "")
-#
-#?acf
-#
-#ggAcf(rvec_1) +
-#  labs(title = ticker_max)
-#
-#ggAcf(rvec_2) +
-#  labs(title = ticker_min)
-#
-#
-#acf(rvec_1, main = "", type = "partial")
-#acf(rvec_1, main = "", type = "partial")
-#
-```
+start_date <- min(prices$date)
 
+ret_ts_1 <- prices %>% 
+    filter(str_detect(symbol, ticker_max)) %>% 
+    select(symbol, date, daily_return ) %>% 
+    tk_ts(., start = year(start_date), silent = TRUE)
 
-```{r}
-
-#ibrary(exuber)
-
-#r_1 <- radf(ts_1)
-
-#ummary(ur_1)
-
-#df.test(ts_1)
-
-
-#df.test(ts_2)
+px_ts_1 <- prices %>% 
+    filter(str_detect(symbol, ticker_max)) %>% 
+    select(symbol, date, close ) %>% 
+    tk_ts(., start = year(start_date), silent = TRUE)
+    
+adf.test(ret_ts_1)
+    
+adf.test(px_ts_1)
 
 ```
 
+```{r echo=FALSE}
+
+ret_ts_1 <- reactive({
+  input$update_button
+  prices_int() %>% 
+    filter(str_detect(symbol, input$ticker_id[1])) %>% 
+    select(symbol, date, daily_return ) %>% 
+    tk_ts(., start = year(start_date), silent = TRUE)
+})
+
+ret_ts_2 <-reactive({
+  input$update_button
+     prices_int() %>% 
+    filter(str_detect(symbol, input$ticker_id[2])) %>% 
+    select(symbol, date, daily_return ) %>% 
+    tk_ts(., start = year(start_date), silent = TRUE)
+})
+```
+
+```{r echo=FALSE}
+
+renderPrint({
+  
+clicks <- input$update_button
+
+isolate({
+
+adf.test(ret_ts_1())
+
+})
+
+})
+
+```
+
+```{r echo=FALSE}
+
+renderPrint({
+  
+clicks <- input$update_button
+
+isolate({
+
+adf.test(ret_ts_2())
+
+})
+
+})
+
+```
+
+Em ambos os casos, a hipótese nula é aceita, confirmando-se a estacionaridade dos retornos.
 
 ### Normalidade
 
@@ -464,32 +506,42 @@ nn_test %>% kable(digits = 2)
 
 ```
 
+
 ```{r echo = FALSE}
 
-output$normality_table <- renderTable({
+rvec_1 <- reactive({
+  input$update_button
+  prices_int() %>% 
+    filter(str_detect(symbol, input$ticker_id[1])) %>% 
+    select(daily_return) %>% 
+    as.vector()
+})
+
+rvec_2 <- reactive({
+  input$update_button
+  prices_int() %>% 
+    filter(str_detect(symbol, input$ticker_id[2])) %>% 
+    select(daily_return) %>% 
+    as.vector() 
+})
+
+```
+
+```{r echo = FALSE}
+
+renderTable({
   
 clicks <- input$update_button
 
 isolate({
 
-rvec_1 <- prices_int() %>% 
-    filter(str_detect(symbol, input$ticker_id[1])) %>% 
-    select(daily_return) %>% 
-    as.vector()
+skw_1 <- skewness(rvec_1())
 
-rvec_2 <- prices_int() %>% 
-    filter(str_detect(symbol, input$ticker_id[2])) %>% 
-    select(daily_return) %>% 
-    as.vector() 
+krt_1 <- kurtosis(rvec_1())
 
+skw_2 <- skewness(rvec_2())
 
-skw_1 <- skewness(rvec_1)
-
-krt_1 <- kurtosis(rvec_1)
-
-skw_2 <- skewness(rvec_2)
-
-krt_2 <- kurtosis(rvec_2)
+krt_2 <- kurtosis(rvec_2())
 
 
 nn_test <- tibble(ticker = c(input$ticker_id[1], input$ticker_id[2]),
@@ -502,13 +554,13 @@ nn_test
 
 })
 
-tableOutput("normality_table")
-
 ```
 
-## Efeitos ARCH
+## Autocorrelação do quadrado dos retornos
 
-Para verificar a presença de efeitos ARCH, é feito um teste Ljung-Box nas séries de quadrados dos retornos das duas ações:
+Para verificar se os retornos são autocorrelacionados, é feito um teste Ljung-Box nas séries de quadrados dos retornos das duas ações.
+
+Para definir o lag, será utilizado o logarítmo do número de linhas dos retornos conforme metodologia de [@ref]
 
 ```{r include = FALSE}
 
@@ -517,35 +569,39 @@ sqr_1 <- prices %>%
     select(sq_return) %>% 
     as.vector()
 
-Box.test(sqr_1, lag=12, type="Ljung-Box")
+n1 <- round(log(nrow(sqr_1)))
 
+Box.test(sqr_1, lag=7, type="Ljung-Box")
 
 sqr_2 <- prices %>% 
     filter(str_detect(symbol, ticker_min)) %>% 
     select(sq_return) %>% 
     as.vector() 
 
-Box.test(sqr_2, lag=12, type="Ljung-Box")
+n2 <- round(log(nrow(sqr_2)))
+
+Box.test(sqr_2, lag=n2, type="Ljung-Box")
 
 ```
 
-```{r echo=FALSE}
 
-renderPrint({
-  
-clicks <- input$update_button
+```{r echo = FALSE}
 
-isolate({
-
-sqr_1 <- prices_int() %>% 
+sqr_1 <- reactive({
+  input$update_button
+  prices_int() %>% 
     filter(str_detect(symbol, input$ticker_id[1])) %>% 
     select(sq_return) %>% 
     as.vector()
-
-Box.test(sqr_1, lag=12, type="Ljung-Box")
-
 })
 
+
+sqr_2 <- reactive({
+  input$update_button
+  prices_int() %>% 
+    filter(str_detect(symbol, input$ticker_id[2])) %>% 
+    select(sq_return) %>% 
+    as.vector() 
 })
 
 ```
@@ -558,13 +614,199 @@ renderPrint({
 clicks <- input$update_button
 
 isolate({
-  
-sqr_2 <- prices_int() %>% 
-    filter(str_detect(symbol, input$ticker_id[2])) %>% 
-    select(sq_return) %>% 
-    as.vector() 
 
-Box.test(sqr_2, lag=12, type="Ljung-Box")
+n <- round(log(nrow(sqr_1())))
+
+Box.test(sqr_1(), lag=n, type="Ljung-Box")
+
+})
+
+})
+
+```
+
+```{r echo=FALSE}
+
+renderPrint({
+  
+clicks <- input$update_button
+
+isolate({
+  
+n <- round(log(nrow(sqr_2())))
+
+Box.test(sqr_2(), lag=n, type="Ljung-Box")
+
+})
+
+})
+
+```
+
+
+### Efeitos ARCH
+
+Para verificar a presença de efeitos ARCH,
+
+- ACF
+-arch.test com lag da acf
+
+```{r eval=FALSE, warning=FALSE, include=FALSE}
+
+arch_test <- prices %>%
+    group_by(symbol) %>%
+    tk_acf_diagnostics(date, daily_return, .lag = 703) %>%  #número máximo de lags
+    mutate(acf_out = as_factor(if_else(ACF > .white_noise_upper, 1, 0)),
+           pacf_out = as_factor(if_else(PACF > .white_noise_upper, 1, 0)),
+           upper_limit = .white_noise_upper,
+           lower_limit = .white_noise_lower)
+
+lag_test <- arch_test %>% 
+  filter(str_detect(symbol, ticker_max)) %>% 
+  pull(lag)
+
+
+library(fDMA)
+archtest(ts = as.vector(ret_ts_1), lag=lag_test)
+
+prices %>%
+    group_by(symbol) %>%
+    plot_acf_diagnostics(date, daily_return,
+                         .lags = "50 days",
+                         .show_white_noise_bars = TRUE,
+                         #.x_intercept = 7,
+                         .interactive = TRUE)
+
+arch_test %>% 
+  filter(lag <=60) %>% 
+  ggplot(aes(lag, ACF, color = acf_out, group = symbol)) +
+  geom_line(aes(lag, y = upper_limit), linetype = 2, color = "black", alpha = 0.5) +
+  geom_line(aes(lag, y = lower_limit), linetype = 2, color = "black", alpha = 0.5) +
+  geom_point(size = 1) +
+  geom_segment(aes(x=lag, xend=lag, y=0, yend=ACF)) +
+  scale_color_manual(values = c("#7cb5ec","#f7a35c")) +
+  facet_wrap(~symbol, nrow = 2) +
+  labs(color = "Out of interval")
+
+arch_test %>% 
+  filter(lag <=60) %>% 
+  filter(str_detect(symbol, ticker_min)) %>% 
+  hchart(., "lollipop", 
+          hcaes(x = lag, y = ACF, group = acf_out)) %>% 
+      hc_colors(c("#7cb5ec","#f7a35c")) %>%
+      hc_tooltip(valueDecimals = 2) %>% 
+      hc_xAxis(title = list(text = "Lag")) %>% 
+      hc_yAxis(title = list(text = "ACF"))
+
+```
+
+
+```{r echo = FALSE}
+
+renderPlot({
+  
+clicks <- input$update_button
+
+isolate({
+  
+  prices_int() %>%
+    group_by(symbol) %>%
+    plot_acf_diagnostics(date, daily_return,
+                         .lags = "50 days",
+                         .show_white_noise_bars = TRUE,
+                         #.x_intercept = 7,
+                         .interactive = F)
+  
+  
+})
+
+})
+
+```
+
+
+```{r echo = FALSE}
+
+acf_test <- reactive({
+  input$update_button
+  prices_int() %>%
+    group_by(symbol) %>%
+    tk_acf_diagnostics(date, daily_return, .lag = 703) %>%  #número máximo de lags
+    mutate(acf_out = as_factor(if_else(ACF > .white_noise_upper, 1, 0)),
+           pacf_out = as_factor(if_else(PACF > .white_noise_upper, 1, 0)),
+           upper_limit = .white_noise_upper,
+           lower_limit = .white_noise_lower)
+})
+
+arch_test <- reactive({
+  input$update_button
+  acf_test() %>% 
+  filter(acf_out == 1, lag > 2) %>% 
+    select(symbol, lag) %>% 
+    top_n(-1, lag)
+})
+
+
+```
+
+
+```{r echo = FALSE}
+
+renderPlot({
+clicks <- input$update_button
+
+isolate({
+  
+acf_test() %>% 
+  filter(lag <= 60) %>% 
+  ggplot(aes(lag, ACF, color = acf_out, group = symbol)) +
+  geom_line(aes(lag, y = upper_limit), linetype = 2, color = "black", alpha = 0.7) +
+  geom_line(aes(lag, y = lower_limit), linetype = 2, color = "black", alpha = 0.7) +
+  scale_color_manual(hc_cols) +
+  geom_point(size = 1) +
+  geom_segment(aes(x=lag, xend=lag, y=0, yend=ACF)) +
+  scale_color_manual(values = c("#7cb5ec","#f7a35c")) +
+  facet_wrap(~symbol, nrow = 2) +
+  labs(color = "Out of interval")
+
+#acf_test() %>% 
+#  filter(lag <=60) %>% 
+#  filter(str_detect(symbol, input$ticker_id[1])) %>% 
+#  hchart(., "lollipop", 
+#          hcaes(x = lag, y = ACF, group = acf_out)) %>% 
+#      hc_colors(c("#7cb5ec","#f7a35c")) %>%
+#      hc_tooltip(valueDecimals = 2) %>% 
+#      hc_xAxis(title = list(text = "Lag")) %>% 
+#      hc_yAxis(title = list(text = "ACF"))
+    
+
+  
+#"#434348"
+
+})
+
+})
+
+?renderHighchart2
+
+```
+
+A partir do teste ACF, é selecionados o primeiro lag após o primeiro fora do limite superior do intervalo de 95% para teste de efeito ARCH:
+
+```{r}
+
+renderPrint({
+  
+clicks <- input$update_button
+
+isolate({
+  
+lag_test_1 <- arch_test() %>% 
+  filter(str_detect(symbol, input$ticker_id[1])) %>% 
+  pull(lag)
+
+archtest(ts = as.vector(ret_ts_1()), lag=lag_test_1)
+
 
 })
 
@@ -573,27 +815,43 @@ Box.test(sqr_2, lag=12, type="Ljung-Box")
 
 ```
 
-Como em ambos os casos o p-valor é menor do que 0.05, a hipótese nula é rejeitada. Há, portanto, **fortes indícios de efeitos ARCH**.
+statistic = 230.28, lag = 7, p-value < 2.2e-16
+alternative hypothesis: ARCH effects of order 7 are present
+
+```{r echo = FALSE}
+
+renderPrint({
+  
+clicks <- input$update_button
+
+isolate({
+
+lag_test_2 <- arch_test() %>% 
+  filter(str_detect(symbol, input$ticker_id[2])) %>% 
+  pull(lag)
+  
+
+archtest(ts = as.vector(ret_ts_2()), lag=lag_test_2)
+
+})
+
+})
+
+
+
+```
+
+Em ambos os casos a hipótese nula é rejeitada, indicando, portanto, **fortes indícios de efeitos ARCH** da ordem selecionada.
 
 ## Box-Jenkins
 
 ### Identificação
 
-Passos da metodologia Box-Jenkins para ajuste da média dos retornos, se necessário
-
-```{r include = FALSE}
-
-#acf(rets,main = "")
-#acf(rets, main = "",type = "partial")
-#
-#adf.test(rets)
-#
-
-
-#Box.test(resi,lag=20,type="Ljung")
-```
+Para essa etapa, é possível utilizar os lags já identificados anteriormente no item de teste de efeitos ARCH.
 
 ### Estimação
+
+Os lags identificados são então confirmados pela estimação `auto.arima`:
 
 ```{r}
 
@@ -602,12 +860,16 @@ Passos da metodologia Box-Jenkins para ajuste da média dos retornos, se necess�
 
 ### Diagnóstico
 
+Por fim, é feito o diagnóstico dos resíduos:
+
 ```{r}
 
 ```
 
 
 # Volatilidade
+
+Como foi ajustado um modelo ARMA acima, e verificou-se a não normalidade dos retornos, será ajustado um modelo GARCH para previsão a volatilidade.
 
 Escolha, estimação e interpretação do modelo de volatilidade, incluindo: escolha das ordens e modelo, análise de resíduos e coeficientes
 
