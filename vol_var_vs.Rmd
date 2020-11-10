@@ -1066,7 +1066,17 @@ garch_fit_1 <- ugarchfit(spec = garch_spec, data = rets)
 
 as.vector(ret_ts_1[1:704])
 
-garch_fit_1@fit$matcoef
+new_names <- c("estimate","std_error","t_value","Pr")
+
+coefs <- as_tibble(garch_fit_1@fit$matcoef) %>% 
+  janitor::clean_names() %>% 
+  bind_cols( param = c("ar1", "ma1", "ma2", "omega", "alpha", "beta", "shape")) %>% 
+  select(param, everything())
+
+
+ coefs %>% 
+    filter(param %in% c("alpha", "beta")) %>% 
+    summarise(sum(estimate))
 
 ugarchforecast(garch_fit_1, n.ahead=1, data=rets)
 
@@ -1077,10 +1087,16 @@ rets <- prices %>%
     pull(daily_return)
   
 
+
+tibble(param = c("ar1", "ma1", "ma2", "omega", "alpha", "beta1", "shape"),
+       estimate = map(param, ~garch_fit_1@fit$matcoef[param,][1]),
+       error = garch_fit_1@fit$matcoef[param,][2])
+
+
 ```
 
 
-```{r}
+```{r echo = FALSE}
 
 garch_spec_1 <- reactive({
   
@@ -1111,12 +1127,22 @@ isolate({
  })
 })
 
+garch_params_1 <- reactive({
+  isolate({
+    
+    garch_1 <- garch_fit_1()
+    
+    as_tibble(garch_1@fit$matcoef) %>% 
+          janitor::clean_names() %>% 
+          bind_cols( param = c("ar1", "ma1", "ma2", "omega", "alpha", "beta", "shape")) %>% 
+          select(param, everything())
+  })
+  
+})
 
-renderPrint({
+renderTable({
   
-  garch_1 <- garch_fit_1()
-  
-  garch_1@fit$matcoef
+  garch_params_1()
   
 })
 
@@ -1124,7 +1150,7 @@ renderPrint({
 
 -   `r ticker_2`
 
-```{r}
+```{r echo = FALSE}
 
 garch_spec_2 <- reactive({
   
@@ -1156,15 +1182,73 @@ isolate({
 })
 
 
-renderPrint({
-  
-  garch_2 <- garch_fit_2()
-  
-  garch_2@fit$matcoef
+garch_params_2 <- reactive({
+  isolate({
+    
+    garch_2 <- garch_fit_2()
+    
+    as_tibble(garch_2@fit$matcoef) %>% 
+          janitor::clean_names() %>% 
+          bind_cols( param = c("ar1", "ma1", "ma2", "omega", "alpha", "beta", "shape")) %>% 
+          select(param, everything())
+  })
   
 })
 
+renderPrint({
+  
+  garch_params_2()
+  
+})
+
+
 ```
+
+- Comparação dos parâmetros GARCH:
+
+```{r echo = FALSE}
+
+comparison <- reactive({
+  
+  clicks <- input$update_button
+  
+isolate({
+  
+  a_b1 <- garch_params_1() %>% 
+    filter(param %in% c("alpha", "beta")) %>% 
+    summarise(total = sum(estimate)) %>% 
+    pull(total)
+  
+  omg1 <- garch_params_1() %>% filter(param == "omega") %>% pull(estimate)
+  
+  a_b2 <- garch_params_2() %>% 
+    filter(param %in% c("alpha", "beta")) %>% 
+    summarise(total = sum(estimate)) %>% 
+    pull(total)
+  
+  omg2 <- garch_params_2() %>% filter(param == "omega") %>% pull(estimate)
+  
+  
+  tibble(ticker = c(ticker_1(), ticker_2()),
+         a_b = c(a_b1, a_b2),
+         omg = c(omg1, omg2),
+         om_ab = omg/(1-a_b))
+    
+})
+
+})
+
+renderPrint({
+  
+  comparison() %>% 
+    kable()
+  
+  })
+  
+
+
+```
+
 
 # VaR
 
