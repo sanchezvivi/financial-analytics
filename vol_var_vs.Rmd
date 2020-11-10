@@ -120,7 +120,7 @@ return(b3_ts)
 
 # Análise gráfica
 
--   Análise gráfica dos preços e (log) retornos;
+A seguir são feitas as análises gráficas dos preçoes e retornos. Os testes estatísticos necessários para verificar a presença de raiz unitária, normalidade, autocorrelação e efeitos ARCH serão no item seguinte.
 
 ## Preços
 
@@ -182,6 +182,14 @@ prices_int <- reactive({input$update_button
                            sq_return = daily_return^2)%>% 
                     ungroup()
                   })
+
+ticker_1 <- reactive({
+  input$ticker_id[1]
+})
+
+ticker_2 <- reactive({
+  input$ticker_id[2]
+})
 
 
 output$underlying <- renderHighchart({
@@ -345,19 +353,11 @@ highchartOutput("sq_returns")
 
 ```
 
+# Testes
 
-```{r}
+## Raíz unitária
 
-
-
-```
-
-
-## Testes
-
-### Raíz unitária
-
-"Série com raiz unitária não é estacionária"
+O teste de raiz unitária é feito para verificar a estacionaridade da série temporal. No caso, se houver raiz unitária, a série *não* é estacionária.
 
 [@Carol Alexander - II.5.3.4 Unit Root Tests]
 
@@ -370,14 +370,18 @@ ret_ts_1 <- prices %>%
     select(symbol, date, daily_return ) %>% 
     tk_ts(., start = year(start_date), silent = TRUE)
 
+ret_ts_2 <- prices %>% 
+    filter(str_detect(symbol, ticker_min)) %>% 
+    select(symbol, date, daily_return ) %>% 
+    tk_ts(., start = year(start_date), silent = TRUE)
+
 px_ts_1 <- prices %>% 
     filter(str_detect(symbol, ticker_max)) %>% 
     select(symbol, date, close ) %>% 
     tk_ts(., start = year(start_date), silent = TRUE)
     
 adf.test(ret_ts_1)
-    
-adf.test(px_ts_1)
+
 
 ```
 
@@ -393,12 +397,14 @@ ret_ts_1 <- reactive({
 
 ret_ts_2 <-reactive({
   input$update_button
-     prices_int() %>% 
+  prices_int() %>% 
     filter(str_detect(symbol, input$ticker_id[2])) %>% 
     select(symbol, date, daily_return ) %>% 
     tk_ts(., start = year(start_date), silent = TRUE)
 })
 ```
+
+-   `r ticker_1`
 
 ```{r echo=FALSE}
 
@@ -415,6 +421,8 @@ adf.test(ret_ts_1())
 })
 
 ```
+
+-   `r ticker_2`
 
 ```{r echo=FALSE}
 
@@ -434,7 +442,7 @@ adf.test(ret_ts_2())
 
 Em ambos os casos, a hipótese nula é aceita, confirmando-se a estacionaridade dos retornos.
 
-### Normalidade
+## Normalidade
 
 Como é possível ver nos gráficos abaixo, para ambas ações, os retornos não podem ser considerados normais.
 
@@ -505,7 +513,6 @@ nn_test <- tibble(ticker = c(ticker_max, ticker_min),
 nn_test %>% kable(digits = 2)
 
 ```
-
 
 ```{r echo = FALSE}
 
@@ -584,7 +591,6 @@ Box.test(sqr_2, lag=n2, type="Ljung-Box")
 
 ```
 
-
 ```{r echo = FALSE}
 
 sqr_1 <- reactive({
@@ -594,7 +600,6 @@ sqr_1 <- reactive({
     select(sq_return) %>% 
     as.vector()
 })
-
 
 sqr_2 <- reactive({
   input$update_button
@@ -606,6 +611,7 @@ sqr_2 <- reactive({
 
 ```
 
+-   `r ticker_1`
 
 ```{r echo=FALSE}
 
@@ -625,6 +631,8 @@ Box.test(sqr_1(), lag=n, type="Ljung-Box")
 
 ```
 
+-   `r ticker_2`
+
 ```{r echo=FALSE}
 
 renderPrint({
@@ -643,13 +651,9 @@ Box.test(sqr_2(), lag=n, type="Ljung-Box")
 
 ```
 
+## Efeitos ARCH
 
-### Efeitos ARCH
-
-Para verificar a presença de efeitos ARCH,
-
-- ACF
--arch.test com lag da acf
+Para verificar a presença de efeitos ARCH, é feito o teste de Lagrange nas séries de quadrado dos retornos.
 
 ```{r eval=FALSE, warning=FALSE, include=FALSE}
 
@@ -667,7 +671,7 @@ lag_test <- arch_test %>%
 
 
 library(fDMA)
-archtest(ts = as.vector(ret_ts_1), lag=lag_test)
+archtest(ts = as.vector(sqr_1), lag=lag_test)
 
 prices %>%
     group_by(symbol) %>%
@@ -700,8 +704,7 @@ arch_test %>%
 
 ```
 
-
-```{r echo = FALSE}
+```{r include = FALSE}
 
 renderPlot({
   
@@ -711,12 +714,11 @@ isolate({
   
   prices_int() %>%
     group_by(symbol) %>%
-    plot_acf_diagnostics(date, daily_return,
+    plot_acf_diagnostics(date, sq_return,
                          .lags = "50 days",
                          .show_white_noise_bars = TRUE,
                          #.x_intercept = 7,
                          .interactive = F)
-  
   
 })
 
@@ -724,14 +726,13 @@ isolate({
 
 ```
 
-
 ```{r echo = FALSE}
 
 acf_test <- reactive({
   input$update_button
   prices_int() %>%
     group_by(symbol) %>%
-    tk_acf_diagnostics(date, daily_return, .lag = 703) %>%  #número máximo de lags
+    tk_acf_diagnostics(date, sq_return, .lag = 703) %>%  #número máximo de lags
     mutate(acf_out = as_factor(if_else(ACF > .white_noise_upper, 1, 0)),
            pacf_out = as_factor(if_else(PACF > .white_noise_upper, 1, 0)),
            upper_limit = .white_noise_upper,
@@ -748,7 +749,6 @@ arch_test <- reactive({
 
 
 ```
-
 
 ```{r echo = FALSE}
 
@@ -769,31 +769,27 @@ acf_test() %>%
   facet_wrap(~symbol, nrow = 2) +
   labs(color = "Out of interval")
 
-#acf_test() %>% 
-#  filter(lag <=60) %>% 
-#  filter(str_detect(symbol, input$ticker_id[1])) %>% 
-#  hchart(., "lollipop", 
-#          hcaes(x = lag, y = ACF, group = acf_out)) %>% 
-#      hc_colors(c("#7cb5ec","#f7a35c")) %>%
-#      hc_tooltip(valueDecimals = 2) %>% 
-#      hc_xAxis(title = list(text = "Lag")) %>% 
-#      hc_yAxis(title = list(text = "ACF"))
-    
-
-  
-#"#434348"
-
 })
 
 })
 
-?renderHighchart2
 
 ```
 
 A partir do teste ACF, é selecionados o primeiro lag após o primeiro fora do limite superior do intervalo de 95% para teste de efeito ARCH:
 
-```{r}
+-   `r ticker_1`
+
+```{r echo = FALSE}
+
+
+sqr_ts_1 <- reactive({
+  input$update_button
+  prices_int() %>% 
+    filter(str_detect(symbol, input$ticker_id[1])) %>% 
+    select(symbol, date, sq_return ) %>% 
+    tk_ts(., start = year(start_date), silent = TRUE)
+})
 
 renderPrint({
   
@@ -805,7 +801,7 @@ lag_test_1 <- arch_test() %>%
   filter(str_detect(symbol, input$ticker_id[1])) %>% 
   pull(lag)
 
-archtest(ts = as.vector(ret_ts_1()), lag=lag_test_1)
+archtest(ts = sqr_ts_1(), lag=lag_test_1)
 
 
 })
@@ -815,10 +811,17 @@ archtest(ts = as.vector(ret_ts_1()), lag=lag_test_1)
 
 ```
 
-statistic = 230.28, lag = 7, p-value < 2.2e-16
-alternative hypothesis: ARCH effects of order 7 are present
+-   `r ticker_2`
 
 ```{r echo = FALSE}
+
+sqr_ts_2 <- reactive({
+  input$update_button
+  prices_int() %>% 
+    filter(str_detect(symbol, input$ticker_id[2])) %>% 
+    select(symbol, date, sq_return ) %>% 
+    tk_ts(., start = year(start_date), silent = TRUE)
+})
 
 renderPrint({
   
@@ -831,63 +834,412 @@ lag_test_2 <- arch_test() %>%
   pull(lag)
   
 
-archtest(ts = as.vector(ret_ts_2()), lag=lag_test_2)
+archtest(ts = as.vector(sqr_ts_2()), lag=lag_test_2)
 
 })
 
 })
 
+```
+
+Em ambos os casos a hipótese nula é rejeitada, indicando, portanto, **a presença de efeitos ARCH** da ordem selecionada.
+
+# Box-Jenkins
+
+## Identificação
+
+Para essa etapa, são avaliadas a ACF e PACF das séries de retornos:
+
+```{r}
+
+renderPlot({
+  
+clicks <- input$update_button
+
+isolate({
+  
+  prices_int() %>%
+    group_by(symbol) %>%
+    plot_acf_diagnostics(date, daily_return,
+                         .lags = "50 days",
+                         .show_white_noise_bars = TRUE,
+                         #.x_intercept = 7,
+                         .interactive = F)
+  
+})
+
+})
 
 
 ```
 
-Em ambos os casos a hipótese nula é rejeitada, indicando, portanto, **fortes indícios de efeitos ARCH** da ordem selecionada.
-
-## Box-Jenkins
-
-### Identificação
-
-Para essa etapa, é possível utilizar os lags já identificados anteriormente no item de teste de efeitos ARCH.
-
-### Estimação
+## Estimação
 
 Os lags identificados são então confirmados pela estimação `auto.arima`:
 
-```{r}
+```{r eval=FALSE, include=FALSE}
+
+arma_model_1 <- auto.arima(as.vector(ret_ts_1),
+                        stationary = TRUE,
+                        trace = T, ic = 'aicc')
+
+arma_model_1$residuals %>% 
+  ggtsdisplay(plot.type = 'hist' , lag.max = 14, main = ticker_max)
+
+arma_model_1$arma[1]
+
+ar_c_1 <-arma_model_1$arma[1]
+ma_c_1 <- arma_model_1$arma[2]
+
+arma_model_2 <- auto.arima(as.vector(ret_ts_2),
+                        stationary = TRUE,
+                        trace = T, ic = 'aicc')
+
+arma_model_2$arma
 
 ```
 
+-   `r ticker_1`
 
-### Diagnóstico
+```{r echo=FALSE}
+
+arma_1 <-  reactive({
+  input$update_button
+  auto.arima(as.vector(ret_ts_1()),
+                        stationary = TRUE,
+                        trace = T, ic = 'aicc')
+  
+})
+
+arma_1_res <- reactive({
+  input$update_button
+  
+  arma_1()$residuals
+  
+})
+
+ar_coef_1 <- reactive({arma_1()$arma[1]})
+ma_coef_1 <- reactive({arma_1()$arma[2]})
+  
+renderPrint({
+  
+clicks <- input$update_button
+
+isolate({
+
+arma_1()
+  
+})
+
+})
+
+```
+
+-   `r ticker_2`
+
+```{r echo=FALSE}
+
+arma_2 <-  reactive({
+  input$update_button
+  auto.arima(as.vector(ret_ts_2()),
+                        stationary = TRUE,
+                        trace = T, ic = 'aicc')
+})
+
+
+arma_2_res <- reactive({
+  input$update_button
+  
+  arma_2()$residuals
+  
+})
+
+ar_coef_2 <- reactive({arma_2()$arma[1]})
+ma_coef_2 <- reactive({arma_2()$arma[2]})
+
+renderPrint({
+  
+clicks <- input$update_button
+
+isolate({
+
+arma_2()
+
+})
+
+})
+
+
+```
+
+## Diagnóstico
 
 Por fim, é feito o diagnóstico dos resíduos:
 
-```{r}
+```{r echo=FALSE}
+
+renderPlot({
+  
+ clicks <- input$update_button
+
+isolate({
+
+ arma_1_res() %>% 
+    ggtsdisplay(plot.type = 'hist' , lag.max = 14, main = ticker_1())
+
+      }) 
+})
+
+renderPrint({
+  
+clicks <- input$update_button
+
+isolate({
+
+Box.test(arma_1_res(), lag = 14 , fitdf = 2 , type = 'Ljung-Box')
+
+    }) 
+})
+
+```
+
+```{r echo=FALSE}
+
+renderPlot({
+  
+ clicks <- input$update_button
+
+isolate({
+
+ arma_2_res() %>% 
+    ggtsdisplay(plot.type = 'hist' , lag.max = 14, main = ticker_2())
+
+      }) 
+})
+
+renderPrint({
+  
+clicks <- input$update_button
+
+isolate({
+
+Box.test(arma_2_res(), lag = 14 , fitdf = 2 , type = 'Ljung-Box')
+
+    }) 
+})
+
+```
+
+De acordo com os testes de Ljung-Box, os resíduos são não autocorrelacionados, logo podemos assumir esse modelo como bem ajustado.
+
+Segundo os testes Ljung-Box, para p-valor \> 0.05, pode-se dizer que os resíduos não são autocorrelacionados e, portanto, os modelos estão bem ajustados.
+
+# Volatilidade
+
+Como foi ajustado um modelo ARMA acima e verificou-se a não normalidade dos retornos, será ajustado um modelo ARMA das ordens estimadas pelo `auto.arima` e um GARCH(1,1) para previsão a volatilidade.
+
+o modelo GARCH é dado por:
+
+O parâmetro de erro $\alpha$ mede a reação da volatilidade condicional a choques de mercado. Quando possui valor acima de 0.1, pode ser considerado alto e permite a interpretação de uma volatilidade muito sensível a eventos ocorridos no mercado.
+
+O parâmetro $\beta$, por outro lado, mede a persistência da volatilidade independente do que ocorre no mercado. Quando é alto (acima de 0.9), significa que a volatilidade demora para diminuir após uma crise no mercado.  
+
+A soma desses parâmetros ($\alpha + \beta$) determina a taxa de convergência da volatilidade condicional no longo prazo. Quando essa soma é maior do 0.99, a estrutura a termo da volatilidade projetada é relativamente plana.
+
+Por fim, o parâmetro $\omega$, alinhado à soma $\alpha + \beta$, determina o nível da média da volatilidade no longo prazo, ou seja, quando o valor de $\frac{\omega }{1 - \alpha + \beta}$ é alto, a volatilidade a longo prazo no mercado é consideravelmente alta, pois essa magnitude está relacionada à magnitude do quadrado dos retornos. (II - Alexander, C)
+
+
+-   `r ticker_1`
+
+```{r eval=FALSE, include=FALSE}
+
+#ar_c_1
+#ma_c_1
+ 
+
+garch_spec <- ugarchspec(mean.model = list(armaOrder = c(ar_c_1, ma_c_1),
+                                            include.mean=F), 
+                          variance.model = list(garchOrder=c(1,1)), 
+                          distribution.model = "std")
+
+garch_fit_1 <- ugarchfit(spec = garch_spec, data = rets)
+
+as.vector(ret_ts_1[1:704])
+
+garch_fit_1@fit$matcoef
+
+ugarchforecast(garch_fit_1, n.ahead=1, data=rets)
+
+#?ugarchfit
+
+rets <- prices %>% 
+    filter(str_detect(symbol, ticker_max)) %>% 
+    pull(daily_return)
+  
 
 ```
 
 
-# Volatilidade
+```{r}
 
-Como foi ajustado um modelo ARMA acima, e verificou-se a não normalidade dos retornos, será ajustado um modelo GARCH para previsão a volatilidade.
+garch_spec_1 <- reactive({
+  
+   clicks <- input$update_button
+  
+isolate({
+  
+  ugarchspec(mean.model = list(armaOrder = c(ar_coef_1(), ma_coef_1()),
+                                            include.mean = F), 
+                          variance.model = list(garchOrder=c(1,1)), 
+                          distribution.model = "std")
+  })
+})
 
-Escolha, estimação e interpretação do modelo de volatilidade, incluindo: escolha das ordens e modelo, análise de resíduos e coeficientes
+
+garch_fit_1 <- reactive({
+  
+  clicks <- input$update_button
+  
+isolate({
+ 
+ rvec <- prices_int() %>% 
+   filter(str_detect(symbol, input$ticker_id[1])) %>% 
+   pull(daily_return) 
+ 
+ ugarchfit(spec = garch_spec_1(), data = rvec,  solver = "hybrid")
+ 
+ })
+})
+
+
+renderPrint({
+  
+  garch_1 <- garch_fit_1()
+  
+  garch_1@fit$matcoef
+  
+})
+
+```
+
+-   `r ticker_2`
 
 ```{r}
 
+garch_spec_2 <- reactive({
+  
+   clicks <- input$update_button
+  
+isolate({
+  
+  ugarchspec(mean.model = list(armaOrder = c(ar_coef_2(), ma_coef_2()),
+                                            include.mean = F), 
+                          variance.model = list(garchOrder=c(1,1)), 
+                          distribution.model = "std")
+  })
+})
 
+
+garch_fit_2 <- reactive({
+  
+  clicks <- input$update_button
+  
+isolate({
+ 
+ rvec <- prices_int() %>% 
+   filter(str_detect(symbol, input$ticker_id[1])) %>% 
+   pull(daily_return) 
+ 
+ ugarchfit(spec = garch_spec_2(), data = rvec,  solver = "hybrid")
+ 
+ })
+})
+
+
+renderPrint({
+  
+  garch_2 <- garch_fit_2()
+  
+  garch_2@fit$matcoef
+  
+})
 
 ```
 
 # VaR
 
+```{r eval=FALSE, include=FALSE}
+
+frcst <-  ugarchforecast(garch_fit_1, 
+                         n.ahead = 1,
+                         data = ret_ts_1[1:704])
+
+v <- garch_fit_1@fit$matcoef["shape",][1]
+print(v)
+
+r <- frcst@forecast$seriesFor[1]
+print(r)
+
+sigma <- frcst@forecast$sigmaFor[1] #sqrt(h)
+print(sigma)
+
+t_dist <- qt(0.05, v) #conf  0.05
+
+value_at_risk <- r + tc*sigma/sqrt((v/(v-2)))
+
+var_tb <- tibble(t_c = tc,
+              var = value_at_risk,
+              total_loss = (position * var))
+
+```
+
+```{r}
+
+get_var <- function(model_fit,returns, n_ahead, conf = 0.05, position){
+  
+frcst <-  ugarchforecast(model_fit, 
+                         n.ahead = n_ahead,
+                         data = returns) 
+
+v <- model_fit@fit$matcoef["shape",][1]
+
+r <- frcst@forecast$seriesFor[1]
+
+sigma <- frcst@forecast$sigmaFor[1] #sqrt(h)
+
+tc <- qt(conf, v) #conf  0.05
+
+value_at_risk <- r + tc*sigma/sqrt((v/(v-2)))
+
+var_tb <- tibble(t_c = tc,
+              var = value_at_risk,
+              total_loss = (position * var))
+
+return(var_tb)
+
+}
+
+
+```
+
+```{r eval=FALSE, include=FALSE}
+
+get_var(garch_fit_1, ret_ts_1[1:704], 1, 0.05, 1000000) %>% 
+  kable(align = "c")
+```
+
 ## Ação
 
-Cálculo do VaR para o dia seguinte de cada ação, considerando uma posição comprada de R$ 1MM;
+Cálculo do VaR para o dia seguinte de cada ação, considerando uma posição comprada de R\$ 1MM;
 
 ```{r}
 
 
+
+
+```
+
+```{r}
 
 
 ```
@@ -904,4 +1256,7 @@ Cálculo aproximado do VaR da carteira usando correlação histórica.
 
 # Referências
 
-[IBOV]((http://www.b3.com.br/pt_br/market-data-e-indices/indices/indices-amplos/indice-ibovespa-ibovespa-composicao-da-carteira.htm))
+- [IBOV]((http://www.b3.com.br/pt_br/market-data-e-indices/indices/indices-amplos/indice-ibovespa-ibovespa-composicao-da-carteira.htm))
+- Uribe, Paloma. Material da aula Financial Analytics
+- II - Alexander, Carol. Market Risk Analysis - Practical Financial Econometrics
+- IV - Alexander, Carol. Market Risk Analysis - Practical Financial Econometrics
