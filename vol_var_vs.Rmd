@@ -355,7 +355,7 @@ highchartOutput("sq_returns")
 
 # Testes
 
-## Raíz unitária
+## Raiz unitária
 
 O teste de raiz unitária é feito para verificar a estacionaridade da série temporal. No caso, se houver raiz unitária, a série *não* é estacionária.
 
@@ -1080,18 +1080,15 @@ coefs <- as_tibble(garch_fit_1@fit$matcoef) %>%
 
 ugarchforecast(garch_fit_1, n.ahead=1, data=rets)
 
-#?ugarchfit
 
 rets <- prices %>% 
     filter(str_detect(symbol, ticker_max)) %>% 
     pull(daily_return)
-  
 
 
-tibble(param = c("ar1", "ma1", "ma2", "omega", "alpha", "beta1", "shape"),
-       estimate = map(param, ~garch_fit_1@fit$matcoef[param,][1]),
-       error = garch_fit_1@fit$matcoef[param,][2])
-
+coefs %>% 
+  filter(param == "shape") %>% 
+  pull(estimate)
 
 ```
 
@@ -1112,27 +1109,39 @@ isolate({
 })
 
 
+rvec_1 <- reactive({
+  
+  clicks <- input$update_button
+  
+isolate({
+   prices_int() %>% 
+   filter(str_detect(symbol, input$ticker_id[1])) %>% 
+   pull(daily_return) 
+  })
+})
+  
+  
 garch_fit_1 <- reactive({
   
   clicks <- input$update_button
   
 isolate({
  
- rvec <- prices_int() %>% 
-   filter(str_detect(symbol, input$ticker_id[1])) %>% 
-   pull(daily_return) 
- 
- ugarchfit(spec = garch_spec_1(), data = rvec,  solver = "hybrid")
+ ugarchfit(spec = garch_spec_1(), data = rvec_1(),  solver = "hybrid")
  
  })
 })
 
+
 garch_params_1 <- reactive({
+  
+   clicks <- input$update_button
+  
   isolate({
     
-    garch_1 <- garch_fit_1()
+    garch_2 <- garch_fit_1()
     
-    as_tibble(garch_1@fit$matcoef) %>% 
+    as_tibble(garch_2@fit$matcoef) %>% 
           janitor::clean_names() %>% 
           bind_cols( param = c("ar1", "ma1", "ma2", "omega", "alpha", "beta", "shape")) %>% 
           select(param, everything())
@@ -1140,11 +1149,12 @@ garch_params_1 <- reactive({
   
 })
 
-renderTable({
+renderPrint({
   
   garch_params_1()
   
 })
+
 
 ```
 
@@ -1166,23 +1176,34 @@ isolate({
 })
 
 
+rvec_2 <- reactive({
+  
+  clicks <- input$update_button
+  
+isolate({
+   prices_int() %>% 
+   filter(str_detect(symbol, input$ticker_id[2])) %>% 
+   pull(daily_return) 
+  })
+})
+  
+  
 garch_fit_2 <- reactive({
   
   clicks <- input$update_button
   
 isolate({
  
- rvec <- prices_int() %>% 
-   filter(str_detect(symbol, input$ticker_id[1])) %>% 
-   pull(daily_return) 
- 
- ugarchfit(spec = garch_spec_2(), data = rvec,  solver = "hybrid")
+ ugarchfit(spec = garch_spec_2(), data = rvec_2(),  solver = "hybrid")
  
  })
 })
 
 
 garch_params_2 <- reactive({
+  
+   clicks <- input$update_button
+  
   isolate({
     
     garch_2 <- garch_fit_2()
@@ -1208,7 +1229,9 @@ renderPrint({
 
 ```{r echo = FALSE}
 
-comparison <- reactive({
+
+
+renderTable({
   
   clicks <- input$update_button
   
@@ -1219,38 +1242,61 @@ isolate({
     summarise(total = sum(estimate)) %>% 
     pull(total)
   
-  omg1 <- garch_params_1() %>% filter(param == "omega") %>% pull(estimate)
+  omg1 <- garch_params_1() %>% 
+    filter(param == "omega") %>% 
+    pull(estimate)
   
   a_b2 <- garch_params_2() %>% 
     filter(param %in% c("alpha", "beta")) %>% 
     summarise(total = sum(estimate)) %>% 
     pull(total)
   
-  omg2 <- garch_params_2() %>% filter(param == "omega") %>% pull(estimate)
+  omg2 <- garch_params_2() %>% 
+    filter(param == "omega") %>% 
+    pull(estimate)
   
   
-  tibble(ticker = c(ticker_1(), ticker_2()),
+  comparison <- tibble(ticker = c(input$ticker_id[1], input$ticker_id[2]),
          a_b = c(a_b1, a_b2),
          omg = c(omg1, omg2),
          om_ab = omg/(1-a_b))
+  
+  
+  comparison
     
 })
 
 })
-
-renderPrint({
-  
-  comparison() %>% 
-    kable()
-  
-  })
-  
 
 
 ```
 
 
 # VaR
+
+Abaixo, são selecionados os parâmetros para cálculo do VaR de ambas as ações:
+
+```{r echo = FALSE}
+
+numericInput("position", label = "Valor nominal da Posição (R$)",
+            value = 1000000) 
+
+numericInput("conf_int", label = "Intervalo de confiança (%)",
+            value = 0.05) 
+
+numericInput("days_ahead", label = "Dias a frente",
+            value = 1, step = 1) 
+
+position <- reactive({isolate({input$position})})
+
+days_ahead <- reactive({isolate({input$days_ahead})})
+
+actionButton("update_button_2", "Atualizar")
+
+
+```
+
+## Ação
 
 ```{r eval=FALSE, include=FALSE}
 
@@ -1269,40 +1315,43 @@ print(sigma)
 
 t_dist <- qt(0.05, v) #conf  0.05
 
-value_at_risk <- r + tc*sigma/sqrt((v/(v-2)))
+value_at_risk <- r + t_dist*sigma/sqrt((v/(v-2)))
 
-var_tb <- tibble(t_c = tc,
-              var = value_at_risk,
+position <- 1000000
+
+var_tb <- tibble(tc = t_dist,
+              var = value_at_risk[1],
               total_loss = (position * var))
 
 ```
 
+- Função para cálculo do VaR e perda total considerando a posição indicada
+
 ```{r}
 
-get_var <- function(model_fit,returns, n_ahead, conf = 0.05, position){
-  
+get_var <- function(model_fit, returns, n_ahead, conf = 0.05, position){
+
 frcst <-  ugarchforecast(model_fit, 
-                         n.ahead = n_ahead,
-                         data = returns) 
+                       n.ahead = n_ahead,
+                       data = returns)
 
-v <- model_fit@fit$matcoef["shape",][1]
+v <-  model_fit@fit$matcoef["shape",][1]
 
-r <- frcst@forecast$seriesFor[1]
+r <-  frcst@forecast$seriesFor[1]
 
-sigma <- frcst@forecast$sigmaFor[1] #sqrt(h)
+sigma <-  frcst@forecast$sigmaFor[1] #sqrt(h)
 
-tc <- qt(conf, v) #conf  0.05
-
+tc <-   qt(conf, v) #conf  0.05
+    
 value_at_risk <- r + tc*sigma/sqrt((v/(v-2)))
-
-var_tb <- tibble(t_c = tc,
-              var = value_at_risk,
-              total_loss = (position * var))
+    
+var_tb <- tibble(t_dist = tc,
+        var = value_at_risk,
+        total_loss = (position * var))
 
 return(var_tb)
 
 }
-
 
 ```
 
@@ -1312,21 +1361,290 @@ get_var(garch_fit_1, ret_ts_1[1:704], 1, 0.05, 1000000) %>%
   kable(align = "c")
 ```
 
-## Ação
+- `r ticker_1`
 
-Cálculo do VaR para o dia seguinte de cada ação, considerando uma posição comprada de R\$ 1MM;
+```{r echo = FALSE}
 
-```{r}
+frcst_1 <-  reactive({
+   clicks <- input$update_button_2
+          isolate({
+            
+            model_fit <- garch_fit_1()
+            returns <- rvec_1()
+            
+            ugarchforecast(model_fit, 
+                       n.ahead = input$days_ahead,
+                       data = returns)
+})})
 
 
+#renderPrint({frcst_1()})
+#```
+#
+#```{r}
+v <- reactive({
+   clicks <- input$update_button_2
+          isolate({
+  
+  model_fit <- garch_fit_1()
+  
+  model_fit@fit$matcoef["shape",][1]
+
+})})
+
+#renderPrint({v()})
+#```
+#
+#```{r echo = FALSE}
+r <- reactive({
+   clicks <- input$update_button_2
+  isolate({
+    
+    f <- frcst_1()
+  
+    f@forecast$seriesFor[1]
+    
+})})
+
+#renderPrint({r()})
+
+#```
+#
+#```{r echo = FALSE}
+sigma <- reactive({
+   clicks <- input$update_button_2
+  isolate({
+    f <- frcst_1()
+  
+  f@forecast$sigmaFor[1] #sqrt(h)
+})})
+
+#renderPrint({sigma()})
+
+#```
+#
+#```{r echo = FALSE}
+
+tc <- reactive({
+   clicks <- input$update_button_2
+  isolate({
+  
+  qt(input$conf_int, v()) #conf  0.05
+
+})})   
+
+#renderPrint({tc()})
+
+#```
+#
+#```{r echo = FALSE}
+
+
+value_at_risk <- reactive({
+   clicks <- input$update_button_2
+  isolate({
+  
+  r() + tc()*sigma()/sqrt((v()/(v()-2)))
+
+  })})
+
+#renderPrint({value_at_risk()})
+
+loss <- reactive({
+   clicks <- input$update_button_2
+  isolate({
+  
+    var <- value_at_risk()
+    
+    pos <- position()
+  
+    var * pos
+
+  })})
+
+
+#renderPrint({loss()})
+
+```
+    
+```{r echo = FALSE}
+    
+var_tb <- reactive({
+   clicks <- input$update_button_2
+  isolate({
+  
+  tibble(t_c = tc(),
+        var = value_at_risk(),
+        total_loss = (input$position * var))
+})})
+
+
+renderTable({
+  clicks <- input$update_button
+  isolate({
+    
+    var_tb()
+  
+  
+})})
 
 
 ```
 
-```{r}
+O VaR de `r days_ahead` dia(s) para a ação é de `r value_at_risk` e a perda total esperada no período para uma posição de R$ `r position` é de `r loss` reais
+
+```{r  echo = FALSE, include=FALSE}
+
+renderPrint({
+
+#var_1 <- reactive({
+  
+clicks <- input$update_button
+   
+   isolate({
+  
+get_var(garch_fit_1(), rvec_1(), input$days_ahead, 
+                  input$conf_int, input$position) 
+
+
+   })
+   
+})
+     
+
+```
+
+- `r ticker_2`
+
+```{r echo = FALSE}
+
+#var_2 <- reactive({
+#  
+#   clicks <- input$update_button
+#   
+#   isolate({
+
+renderTable({
+  
+  get_var(garch_fit_2(), rvec_2(), input$days_ahead, 
+                  input$conf_int, input$position) 
+
+   })
+     
+#renderTable({
+#  
+#  var_2()
+#
+#})
 
 
 ```
+
+```{r echo = FALSE}
+
+frcst_2 <-  reactive({
+   clicks <- input$update_button_2
+          isolate({
+            
+            model_fit <- garch_fit_2()
+            returns <- rvec_2()
+            
+            ugarchforecast(model_fit, 
+                       n.ahead = input$days_ahead,
+                       data = returns)
+})})
+
+
+#renderPrint({frcst_1()})
+#```
+#
+#```{r}
+v_2 <- reactive({
+   clicks <- input$update_button_2
+          isolate({
+  
+  model_fit <- garch_fit_2()
+  
+  model_fit@fit$matcoef["shape",][1]
+
+})})
+
+#renderPrint({v()})
+#```
+#
+#```{r echo = FALSE}
+r_2 <- reactive({
+   clicks <- input$update_button_2
+  isolate({
+    
+    f <- frcst_2()
+  
+    f@forecast$seriesFor[1]
+    
+})})
+
+#renderPrint({r()})
+
+#```
+#
+#```{r echo = FALSE}
+sigma_2 <- reactive({
+   clicks <- input$update_button_2
+  isolate({
+    f <- frcst_2()
+  
+  f@forecast$sigmaFor[1] #sqrt(h)
+})})
+
+#renderPrint({sigma()})
+
+#```
+#
+#```{r echo = FALSE}
+
+tc_2 <- reactive({
+   clicks <- input$update_button_2
+  isolate({
+  
+  qt(input$conf_int, v_2()) #conf  0.05
+
+})})   
+
+#renderPrint({tc()})
+
+#```
+#
+#```{r echo = FALSE}
+
+
+value_at_risk_2 <- reactive({
+   clicks <- input$update_button_2
+  isolate({
+  
+  r_2() + tc_2()*sigma_2()/sqrt((v_2()/(v_2()-2)))
+
+  })})
+
+#renderPrint({value_at_risk()})
+
+loss_2 <- reactive({
+   clicks <- input$update_button_2
+  isolate({
+    
+    var <- value_at_risk_2()
+    
+    pos <- position()
+  
+    var * pos
+
+  })})
+
+
+#renderPrint({loss_2()})
+
+```
+
+O VaR de `r days_ahead` dia(s) para a ação é de `r value_at_risk_2` e a perda total esperada no período para uma posição de R$ `r position` é de `r loss_2` reais.
 
 ## Carteira
 
