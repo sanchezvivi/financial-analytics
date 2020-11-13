@@ -9,7 +9,7 @@ output: html_document
 
 # Introdução
 
-"A apresentação deve ser sucinta, contendo principalmente as conclusões de cada passo. O script deverá ser entregue junto com a apresentação e deve ser de fácil leitura. A avaliação deve levar em conta principalmente a lógica e clareza da argumentação do modelo escolhido e os cálculos realizados."
+O objetivo deste relatório é calcular o VaR (Value at Risk) de duas ações do Ibovespa, individualmente e em uma carteira composta por elas. Para isso, serão utilizados os modelos de séries temporais e de volatilidade.
 
 ## Pacotes
 
@@ -59,19 +59,14 @@ hc_cols <- c("#7cb5ec", "#434348", "#90ed7d", "#f7a35c",
              "#8085e9", "#f15c80", "#e4d354", "#2b908f", 
              "#f45b5b", "#91e8e1")
 
-
-
 #print(getwd())
 
 ```
 
-## Objetivo
-
-escolher duas ações do índice IBOVESPA ou SP500
 
 # Dados
 
-Para consulta das ações listadas no IBOV, foi extraída a [lista de ações] do site B3 do dia 30/10/20.
+Para consulta das ações listadas no Ibovsepa, foi extraída a lista de ações que compõem o índice do site B3 do dia 30/10/20.
 
 ## Pré-processamento
 
@@ -140,6 +135,8 @@ A seguir são feitas as análises gráficas dos preçoes e retornos. Os testes e
             mutate(return_acc = exp(cumsum(daily_return))-1,
                     sq_return = daily_return^2) %>% 
             ungroup()
+ 
+ prices %>% arrange(desc(date))
  
  highchart(type = "stock") %>%
   hc_add_series(prices %>% select(-daily_return, -return_acc) %>% 
@@ -219,6 +216,8 @@ highchartOutput("underlying")
 
 ```
 
+Pelo gráfico dos preços nota-se a existência de uma tendência. Para a 
+
 ## Retornos Logarítmicos
 
 ### Diário
@@ -248,6 +247,7 @@ prices %>%
 
 
 prices %>% 
+  mutate(daily_return = daily_return*100) %>%
       hchart(., "line", 
              hcaes(x = date, y = return_acc*100, group = symbol)) %>% 
       hc_plotOptions(column = list(stacking = "normal")) %>%
@@ -259,6 +259,7 @@ prices %>%
 
 
 prices %>% 
+  mutate(daily_return = daily_return*100) %>%
       hchart(., "line", 
              hcaes(x = date, y = sq_return*100, group = symbol)) %>% 
       hc_plotOptions(column = list(stacking = "normal")) %>%
@@ -282,6 +283,7 @@ clicks <- input$update_button
 isolate({
   
   prices_int() %>% 
+    mutate(daily_return = daily_return*100) %>% 
     filter(symbol != "^BVSP") %>% 
       hchart(., "line", 
              hcaes(x = date, y = daily_return, group = symbol)) %>% 
@@ -301,6 +303,8 @@ highchartOutput("daily_returns")
 
 ### Acumulado no período
 
+Apenas para referência, a seguir ´observa-se o retorno acumulado no período.
+
 ```{r echo=FALSE}
 
 output$acc_returns <- renderHighchart({
@@ -310,6 +314,7 @@ clicks <- input$update_button
 isolate({
 
   prices_int() %>% 
+    mutate(return_acc = return_acc*100) %>% 
       hchart(., "line", 
              hcaes(x = date, y = return_acc, group = symbol)) %>% 
       #hc_colors(cols) %>%
@@ -337,8 +342,9 @@ clicks <- input$update_button
 isolate({
 
   prices_int() %>% 
+    mutate(sq_return = sq_return*100) %>%
       hchart(., "line", 
-             hcaes(x = date, y = sq_return*100, group = symbol)) %>% 
+             hcaes(x = date, y = sq_return, group = symbol)) %>% 
       #hc_colors(cols) %>%
       hc_tooltip(valueDecimals = 2) %>% 
       hc_xAxis(title = list(text = "Data")) %>% 
@@ -353,13 +359,13 @@ highchartOutput("sq_returns")
 
 ```
 
+Através do gráfico ficam evidentes os picos de volatilidade, como por exemplo em março de 2020 por conta do início da pandemia. Importante notar que os valores são diários, mas a prática de mercado é avaliar a volatilidade anualizada.
+
 # Testes
 
 ## Raiz unitária
 
 O teste de raiz unitária é feito para verificar a estacionaridade da série temporal. No caso, se houver raiz unitária, a série *não* é estacionária.
-
-[@Carol Alexander - II.5.3.4 Unit Root Tests]
 
 ```{r include = FALSE}
 
@@ -482,7 +488,7 @@ plotOutput("qq_plot")
 
 ```
 
-A não normalidade dos retornos também é confirmada pela curtose maior do que 3 e presença de assimetria. Lembrando que pra uma distribuição normal, não há assimetria (skewness = 0) e a curtose é igual a 3. Para as ações analisadas inicialmente, nota-se que VALE3 possui uma assimetria e cauda mais pesada do que ECOR3.
+A não normalidade dos retornos também é confirmada pela curtose maior do que 3 e presença de assimetria. Lembrando que para uma distribuição normal, não há assimetria (skewness = 0) e a curtose é igual a 3. Para as ações analisadas inicialmente, nota-se que VALE3 possui uma assimetria e cauda mais pesada do que ECOR3.
 
 ```{r include = FALSE}
 
@@ -567,7 +573,7 @@ nn_test
 
 Para verificar se os retornos são autocorrelacionados, é feito um teste Ljung-Box nas séries de quadrados dos retornos das duas ações.
 
-Para definir o lag, será utilizado o logarítmo do número de linhas dos retornos conforme metodologia de [@ref]
+Para definir o lag, será utilizado o logarítmo do número de linhas dos retornos conforme metodologia aprendida na disciplina.
 
 ```{r include = FALSE}
 
@@ -650,6 +656,7 @@ Box.test(sqr_2(), lag=n, type="Ljung-Box")
 })
 
 ```
+
 
 ## Efeitos ARCH
 
@@ -776,7 +783,7 @@ acf_test() %>%
 
 ```
 
-A partir do teste ACF, é selecionados o primeiro lag após o primeiro fora do limite superior do intervalo de 95% para teste de efeito ARCH:
+A partir do teste ACF, é selecionado o primeiro lag após o primeiro fora do limite superior do intervalo de 95% para teste de efeito ARCH:
 
 -   `r ticker_1`
 
@@ -842,7 +849,7 @@ archtest(ts = as.vector(sqr_ts_2()), lag=lag_test_2)
 
 ```
 
-Em ambos os casos a hipótese nula é rejeitada, indicando, portanto, **a presença de efeitos ARCH** da ordem selecionada.
+Em ambos os casos a hipótese nula é rejeitada, indicando, portanto, pode-se dizer que **há presença de efeitos ARCH** da ordem selecionada.
 
 # Box-Jenkins
 
@@ -1038,7 +1045,7 @@ Segundo os testes Ljung-Box, para p-valor \> 0.05, pode-se dizer que os resíduo
 
 Como foi ajustado um modelo ARMA acima e verificou-se a não normalidade dos retornos, será ajustado um modelo ARMA das ordens estimadas pelo `auto.arima` e um GARCH(1,1) para previsão a volatilidade.
 
-o modelo GARCH é dado por:
+O modelo GARCH é composto pelos parâmentros descritos a seguir:
 
 O parâmetro de erro $\alpha$ mede a reação da volatilidade condicional a choques de mercado. Quando possui valor acima de 0.1, pode ser considerado alto e permite a interpretação de uma volatilidade muito sensível a eventos ocorridos no mercado.
 
@@ -1047,7 +1054,6 @@ O parâmetro $\beta$, por outro lado, mede a persistência da volatilidade indep
 A soma desses parâmetros ($\alpha + \beta$) determina a taxa de convergência da volatilidade condicional no longo prazo. Quando essa soma é maior do 0.99, a estrutura a termo da volatilidade projetada é relativamente plana.
 
 Por fim, o parâmetro $\omega$, alinhado à soma $\alpha + \beta$, determina o nível da média da volatilidade no longo prazo, ou seja, quando o valor de $\frac{\omega }{1 - \alpha + \beta}$ é alto, a volatilidade a longo prazo no mercado é consideravelmente alta, pois essa magnitude está relacionada à magnitude do quadrado dos retornos. (II - Alexander, C)
-
 
 -   `r ticker_1`
 
@@ -1063,6 +1069,10 @@ garch_spec <- ugarchspec(mean.model = list(armaOrder = c(ar_c_1, ma_c_1),
                           distribution.model = "std")
 
 garch_fit_1 <- ugarchfit(spec = garch_spec, data = rets)
+
+garch_fit_1
+
+infocriteria(garch_fit_1[[k]])[2],3))
 
 as.vector(ret_ts_1[1:704])
 
@@ -1105,6 +1115,10 @@ isolate({
                                             include.mean = F), 
                           variance.model = list(garchOrder=c(1,1)), 
                           distribution.model = "std")
+  
+  
+  
+  
   })
 })
 
@@ -1126,6 +1140,8 @@ garch_fit_1 <- reactive({
   clicks <- input$update_button
   
 isolate({
+  
+  #rets <- rvec_1()
  
  ugarchfit(spec = garch_spec_1(), data = rvec_1(),  solver = "hybrid")
  
@@ -1139,12 +1155,15 @@ garch_params_1 <- reactive({
   
   isolate({
     
-    garch_2 <- garch_fit_1()
+    garch_1 <- garch_fit_1()
     
-    as_tibble(garch_2@fit$matcoef) %>% 
+    tb <- as_tibble(garch_1@fit$matcoef) %>% 
           janitor::clean_names() %>% 
           bind_cols( param = c("ar1", "ma1", "ma2", "omega", "alpha", "beta", "shape")) %>% 
           select(param, everything())
+    
+    print(tb)
+    
   })
   
 })
@@ -1193,6 +1212,8 @@ garch_fit_2 <- reactive({
   clicks <- input$update_button
   
 isolate({
+  
+  #rets_2 <- rvec_2()
  
  ugarchfit(spec = garch_spec_2(), data = rvec_2(),  solver = "hybrid")
  
@@ -1231,7 +1252,7 @@ renderPrint({
 
 
 
-renderTable({
+renderPrint({
   
   clicks <- input$update_button
   
@@ -1262,7 +1283,7 @@ isolate({
          om_ab = omg/(1-a_b))
   
   
-  comparison
+  print(comparison)
     
 })
 
@@ -1279,17 +1300,21 @@ Abaixo, são selecionados os parâmetros para cálculo do VaR de ambas as açõe
 ```{r echo = FALSE}
 
 numericInput("position", label = "Valor nominal da Posição (R$)",
-            value = 1000000) 
+            value = 1000000, step = 1000) 
 
 numericInput("conf_int", label = "Intervalo de confiança (%)",
-            value = 0.05) 
+            value = 0.05, step = 0.01) 
 
 numericInput("days_ahead", label = "Dias a frente",
             value = 1, step = 1) 
 
-position <- reactive({isolate({input$position})})
+position <- reactive({
+  clicks <- input$update_button_2
+  isolate({input$position})})
 
-days_ahead <- reactive({isolate({input$days_ahead})})
+days_ahead <- reactive({
+  clicks <- input$update_button_2
+  isolate({input$days_ahead})})
 
 actionButton("update_button_2", "Atualizar")
 
@@ -1325,7 +1350,7 @@ var_tb <- tibble(tc = t_dist,
 
 ```
 
-- Função para cálculo do VaR e perda total considerando a posição indicada
+- Função para cálculo do VaR e perda total considerando a posição indicada.
 
 ```{r}
 
@@ -1339,9 +1364,9 @@ v <-  model_fit@fit$matcoef["shape",][1]
 
 r <-  frcst@forecast$seriesFor[1]
 
-sigma <-  frcst@forecast$sigmaFor[1] #sqrt(h)
+sigma <-  frcst@forecast$sigmaFor[1]
 
-tc <-   qt(conf, v) #conf  0.05
+tc <-   qt(conf, v)
     
 value_at_risk <- r + tc*sigma/sqrt((v/(v-2)))
     
@@ -1376,7 +1401,6 @@ frcst_1 <-  reactive({
                        n.ahead = input$days_ahead,
                        data = returns)
 })})
-
 
 #renderPrint({frcst_1()})
 #```
@@ -1480,7 +1504,7 @@ var_tb <- reactive({
 
 
 renderTable({
-  clicks <- input$update_button
+  clicks <- input$update_button_2
   isolate({
     
     var_tb()
@@ -1491,7 +1515,7 @@ renderTable({
 
 ```
 
-O VaR de `r days_ahead` dia(s) para a ação é de `r value_at_risk` e a perda total esperada no período para uma posição de R$ `r position` é de `r loss` reais
+O VaR de `r days_ahead` dia(s) para a ação é de `r value_at_risk` e a perda total esperada no período para uma posição de R$ `r position` é de R$ `r loss`
 
 ```{r  echo = FALSE, include=FALSE}
 
@@ -1499,7 +1523,7 @@ renderPrint({
 
 #var_1 <- reactive({
   
-clicks <- input$update_button
+clicks <- input$update_button_2
    
    isolate({
   
@@ -1644,17 +1668,53 @@ loss_2 <- reactive({
 
 ```
 
-O VaR de `r days_ahead` dia(s) para a ação é de `r value_at_risk_2` e a perda total esperada no período para uma posição de R$ `r position` é de `r loss_2` reais.
+O VaR de `r days_ahead` dia(s) para a ação é de `r value_at_risk_2` e a perda total esperada no período para uma posição de R$ `r position` é de R$ `r loss_2`.
 
 ## Carteira
 
-Cálculo aproximado do VaR da carteira usando correlação histórica.
+Por fim é calculado o VaR de uma carteira composta 50%/50% pelas ações selecionadas.
 
 ```{r}
 
+port_var <- reactive({
+  
+  clicks <- input$update_button_2
+  
+isolate({
 
+correlation <- cor(rvec_1(), rvec_2())
+
+var_1 <- value_at_risk()
+
+var_2 <- value_at_risk_2()
+
+sqrt(var_1^2 + var_2^2 + 2*correlation*abs(var_1)*abs(var_2))
+  
+})})
+
+
+port_loss <- reactive({
+  
+  clicks <- input$update_button_2
+  
+  isolate({
+    
+  var <- port_var()
+  
+  pos <- position()
+  
+  var*pos
+  
+})})
 
 ```
+
+O VaR da carteira é de `r port_var` e a perda esperada de `r port_loss` reais.
+
+# Conclusão
+
+Foram ajustados modelos ARMA e GARCH(1,1) para as séries de retorno e volatilidade das ações `r ticker_max` e `r ticker_min`. Como próximos passos, pode ser realizado um processo de otimização do modelo GARCH através da busca pelo menor valor absoluto do critério de informação (BIC).
+
 
 # Referências
 
