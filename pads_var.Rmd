@@ -122,7 +122,7 @@ return(b3_ts)
 
 # Análise gráfica
 
-A seguir são feitas as análises gráficas dos preçoes e retornos. Os testes estatísticos necessários para verificar a presença de raiz unitária, normalidade, autocorrelação e efeitos ARCH serão no item seguinte.
+A seguir são feitas as análises gráficas dos preços e retornos para **duas** ações. Os testes estatísticos necessários para verificar a presença de raiz unitária, normalidade, autocorrelação e efeitos ARCH serão no item seguinte.
 
 ## Preços
 
@@ -372,7 +372,7 @@ Através do gráfico ficam evidentes os picos de volatilidade, como por exemplo 
 
 ## Raiz unitária
 
-O teste de raiz unitária é feito para verificar a estacionaridade da série temporal. No caso, se houver raiz unitária, a série *não* é estacionária.
+O teste de raiz unitária é feito com a função `adf.test` para verificar a estacionaridade da série temporal. No caso, se houver raiz unitária, a série *não* é estacionária.
 
 ```{r include = FALSE}
 
@@ -578,7 +578,7 @@ nn_test
 
 ## Autocorrelação do quadrado dos retornos
 
-Para verificar se os retornos são autocorrelacionados, é feito um teste Ljung-Box nas séries de quadrados dos retornos das duas ações.
+Para verificar se os retornos são autocorrelacionados, é feito um teste Ljung-Box nas séries de quadrados dos retornos das duas ações com a função `Box.test`
 
 Para definir o lag, será utilizado o logarítmo do número de linhas dos retornos conforme metodologia aprendida na disciplina.
 
@@ -667,7 +667,7 @@ Box.test(sqr_2(), lag=n, type="Ljung-Box")
 
 ## Efeitos ARCH
 
-Para verificar a presença de efeitos ARCH, é feito o teste de Lagrange nas séries de quadrado dos retornos.
+Para verificar a presença de efeitos ARCH, é feito o teste de Lagrange nas séries de quadrado dos retornos com a função `archtest`
 
 ```{r eval=FALSE, warning=FALSE, include=FALSE}
 
@@ -1367,7 +1367,7 @@ Pelos parâmetros dos modelos ajustados, nota-se que a volatilidade da ação EC
 
 # VaR
 
-Abaixo, são selecionados os parâmetros para cálculo do VaR de ambas as ações:
+Abaixo, são selecionados os parâmetros para cálculo do VaR de ambas as ações pela abordagem econométrica, visto que foi confirmada a não normalidade dos retornos.
 
 ```{r echo = FALSE}
 
@@ -1444,7 +1444,7 @@ value_at_risk <- r + tc*sigma/sqrt((v/(v-2)))
     
 var_tb <- tibble(t_dist = tc,
         var = value_at_risk,
-        total_loss = (position * var))
+        total_loss = (position * -var))
 
 return(var_tb)
 
@@ -1554,7 +1554,7 @@ loss <- reactive({
     
     pos <- position()
   
-    var * pos
+    -var * pos
 
   })})
 
@@ -1571,7 +1571,7 @@ var_tb <- reactive({
   
   tibble(t_c = tc(),
         var = value_at_risk(),
-        total_loss = (input$position * var))
+        total_loss = (input$position * -var))
 })})
 
 
@@ -1585,9 +1585,11 @@ renderTable({
 })})
 
 
+var_doc <- reactive({round(value_at_risk(), digits = 2)*100})
+
 ```
 
-O VaR de `r days_ahead` dia(s) para a ação é de `r value_at_risk` e a perda total esperada no período para uma posição de R$ `r position` é de R$ `r loss`
+O VaR de `r days_ahead` dia(s) para a ação é de `r var_doc`% e a perda total esperada no período para uma posição de R$ `r position` é de R$ `r loss` 
 
 ```{r  echo = FALSE, include=FALSE}
 
@@ -1722,7 +1724,7 @@ value_at_risk_2 <- reactive({
    clicks <- input$update_button_2
   isolate({
   
-  r_2() + tc_2()*sigma_2()/sqrt((v_2()/(v_2()-2)))
+  abs(r_2() + tc_2()*sigma_2()/sqrt((v_2()/(v_2()-2))))
 
   })})
 
@@ -1736,16 +1738,18 @@ loss_2 <- reactive({
     
     pos <- position()
   
-    var * pos
+    -var * pos
 
   })})
 
 
 #renderPrint({loss_2()})
 
+var_doc_2 <- reactive({round(value_at_risk_2(), digits = 2)*100})
+
 ```
 
-O VaR de `r days_ahead` dia(s) para a ação é de `r value_at_risk_2` e a perda total esperada no período para uma posição de R$ `r position` é de R$ `r loss_2`.
+O VaR de `r days_ahead` dia(s) para a ação é de `r var_doc_2`% e a perda total esperada no período para uma posição de R$ `r position` é de R$ `r loss_2`.
 
 ## Carteira
 
@@ -1768,7 +1772,9 @@ var_2 <- value_at_risk_2()
 sqrt(var_1^2 + var_2^2 + 2*correlation*abs(var_1)*abs(var_2))
   
 })})
+```
 
+```{r echo = FALSE}
 
 port_loss <- reactive({
   
@@ -1784,9 +1790,11 @@ port_loss <- reactive({
   
 })})
 
+var_port_doc <-  reactive({round(port_var(), digits = 2)*100})
+
 ```
 
-O VaR da carteira é de `r port_var` e a perda esperada de R$ `r port_loss`
+O VaR da carteira é de `r var_port_doc`% e a perda esperada de R$ `r port_loss`
 
 # Conclusão
 
