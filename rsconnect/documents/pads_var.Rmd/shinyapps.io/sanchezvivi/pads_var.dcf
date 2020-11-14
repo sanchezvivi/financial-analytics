@@ -4,9 +4,9 @@ username:
 account: sanchezvivi
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
-appId: 3226474
-bundleId: 3856390
+appId: 3231924
+bundleId: 3860203
 url: https://sanchezvivi.shinyapps.io/pads_var/
-when: 1605272060.14504
+when: 1605364755.71171
 asMultiple: FALSE
 asStatic: FALSE

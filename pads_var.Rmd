@@ -1,10 +1,16 @@
 ---
 title: "Volatilidade e VaR"
 author: "Viviane Sanchez"
-Institution: "Insper - Programa Avançado em Data Science"
-date: "10/31/2020"
+date: "10/31/2020 - 11/13/2002"
+output: 
+  html_document:
+    toc: true
+    toc_float:
+      toc_collapsed: true
 runtime: shiny
-output: html_document
+Institution: Insper - Programa Avançado em Data Science
+resource_files:
+- data/2020.10.31 Ibovespa.xlsx
 ---
 
 # Introdução
@@ -17,7 +23,6 @@ O objetivo deste relatório é calcular o VaR (Value at Risk) de duas ações do
 
 #knitr::opts_chunk$set(message = FALSE, warning = FALSE, 
 #                      fig.retina = 2 ,fig.height=5, fig.width=10)
-
 
 library(tidyverse)
 library(tidyquant)
@@ -59,6 +64,8 @@ hc_cols <- c("#7cb5ec", "#434348", "#90ed7d", "#f7a35c",
              "#8085e9", "#f15c80", "#e4d354", "#2b908f", 
              "#f45b5b", "#91e8e1")
 
+rmarkdown::includes(in_header = NULL, before_body = NULL, after_body = NULL)
+
 #print(getwd())
 
 ```
@@ -70,7 +77,7 @@ Para consulta das ações listadas no Ibovsepa, foi extraída a lista de ações
 
 ## Pré-processamento
 
-```{r echo=TRUE}
+```{r echo=TRUE, cache = TRUE}
 
 ibov_raw <- list.files(path = 'data', 
                       pattern = "Ibovespa.xlsx",
@@ -1078,9 +1085,11 @@ as.vector(ret_ts_1[1:704])
 
 new_names <- c("estimate","std_error","t_value","Pr")
 
+rownames(garch_fit_1@fit$matcoef)
+
 coefs <- as_tibble(garch_fit_1@fit$matcoef) %>% 
   janitor::clean_names() %>% 
-  bind_cols( param = c("ar1", "ma1", "ma2", "omega", "alpha", "beta", "shape")) %>% 
+  bind_cols(param = rownames(garch_fit_1@fit$matcoef)) %>% 
   select(param, everything())
 
 
@@ -1102,7 +1111,6 @@ coefs %>%
 
 ```
 
-
 ```{r echo = FALSE}
 
 garch_spec_1 <- reactive({
@@ -1115,12 +1123,23 @@ isolate({
                                             include.mean = F), 
                           variance.model = list(garchOrder=c(1,1)), 
                           distribution.model = "std")
-  
-  
-  
-  
-  })
-})
+  })})
+
+#
+#renderPrint({
+#  
+#clicks <- input$update_button
+#
+#isolate({
+#  
+#  garch_spec_1()
+#  
+#})})
+#
+#
+#```
+#
+#```{r echo = FALSE}
 
 
 rvec_1 <- reactive({
@@ -1148,6 +1167,20 @@ isolate({
  })
 })
 
+#renderPrint({
+#  
+#clicks <- input$update_button
+#
+#isolate({
+#  
+#  garch_fit_1()
+#  
+#})})
+#
+#```
+#
+#
+#```{r echo = FALSE}
 
 garch_params_1 <- reactive({
   
@@ -1157,25 +1190,26 @@ garch_params_1 <- reactive({
     
     garch_1 <- garch_fit_1()
     
-    tb <- as_tibble(garch_1@fit$matcoef) %>% 
+    as_tibble(garch_1@fit$matcoef) %>% 
           janitor::clean_names() %>% 
-          bind_cols( param = c("ar1", "ma1", "ma2", "omega", "alpha", "beta", "shape")) %>% 
+          bind_cols(param = rownames(garch_1@fit$matcoef)) %>% 
           select(param, everything())
-    
-    print(tb)
-    
-  })
-  
-})
 
-renderPrint({
+  })})
+
+renderTable({
+  
+  clicks <- input$update_button
+
+isolate({
   
   garch_params_1()
   
-})
+})}, align = "c")
 
 
 ```
+
 
 -   `r ticker_2`
 
@@ -1194,6 +1228,20 @@ isolate({
   })
 })
 
+#renderPrint({
+#  
+#clicks <- input$update_button
+#
+#isolate({
+#  
+#  garch_spec_2()
+#  
+#})})
+
+
+#```
+#
+#```{r}
 
 rvec_2 <- reactive({
   
@@ -1203,8 +1251,7 @@ isolate({
    prices_int() %>% 
    filter(str_detect(symbol, input$ticker_id[2])) %>% 
    pull(daily_return) 
-  })
-})
+  })})
   
   
 garch_fit_2 <- reactive({
@@ -1220,6 +1267,11 @@ isolate({
  })
 })
 
+#```
+#
+#
+#```{r}
+
 
 garch_params_2 <- reactive({
   
@@ -1231,67 +1283,87 @@ garch_params_2 <- reactive({
     
     as_tibble(garch_2@fit$matcoef) %>% 
           janitor::clean_names() %>% 
-          bind_cols( param = c("ar1", "ma1", "ma2", "omega", "alpha", "beta", "shape")) %>% 
+          bind_cols(param = rownames(garch_2@fit$matcoef)) %>% 
           select(param, everything())
   })
   
 })
 
-renderPrint({
+renderTable({
   
   garch_params_2()
   
-})
+}, align = "c")
 
 
 ```
 
+
+
 - Comparação dos parâmetros GARCH:
+
+
+
+`a_b` : $\alpha + \beta$
+
+
+`om_ab`: $\frac{\omega }{1 - \alpha + \beta}$
+
+
 
 ```{r echo = FALSE}
 
 
 
-renderPrint({
+renderTable({
   
-  clicks <- input$update_button
+   clicks <- input$update_button
   
 isolate({
   
+  garch_1 <- garch_fit_1()
+  garch_2 <- garch_fit_2()
+  
   a_b1 <- garch_params_1() %>% 
-    filter(param %in% c("alpha", "beta")) %>% 
+    filter(param %in% c("alpha1", "beta1")) %>% 
     summarise(total = sum(estimate)) %>% 
     pull(total)
   
   omg1 <- garch_params_1() %>% 
-    filter(param == "omega") %>% 
-    pull(estimate)
+    filter(param %in% c("omega")) %>% 
+    summarise(total = sum(estimate)) %>% 
+    pull(total)
+  
+  bic1 <- infocriteria(garch_1)[2]
+  bic2 <- infocriteria(garch_2)[2]
   
   a_b2 <- garch_params_2() %>% 
-    filter(param %in% c("alpha", "beta")) %>% 
+    filter(param %in% c("alpha1", "beta1")) %>% 
     summarise(total = sum(estimate)) %>% 
     pull(total)
   
   omg2 <- garch_params_2() %>% 
-    filter(param == "omega") %>% 
-    pull(estimate)
-  
+    filter(param %in% c("omega")) %>% 
+    summarise(total = sum(estimate)) %>% 
+    pull(total)
   
   comparison <- tibble(ticker = c(input$ticker_id[1], input$ticker_id[2]),
          a_b = c(a_b1, a_b2),
          omg = c(omg1, omg2),
-         om_ab = omg/(1-a_b))
+         om_ab = omg/(1-a_b),
+         bic = c(bic1, bic2))
   
   
-  print(comparison)
+  comparison
     
 })
 
-})
+}, align = "c")
 
 
 ```
 
+Pelos parâmetros dos modelos ajustados, nota-se que a volatilidade da ação ECOR3 foi melhor ajustada do que da ação VALE3, por possuir um BIC menor em módulo. Outros modelos poderiam ser testados para otimizar e avaliar o BIC ou outro crtíerio de informação para encontrar o modelo com ordens mais adequdas.
 
 # VaR
 
@@ -1550,10 +1622,15 @@ get_var(garch_fit_1(), rvec_1(), input$days_ahead,
 
 renderTable({
   
+  clicks <- input$update_button_2
+   
+   isolate({
+
+  
   get_var(garch_fit_2(), rvec_2(), input$days_ahead, 
                   input$conf_int, input$position) 
 
-   })
+   })})
      
 #renderTable({
 #  
@@ -1709,7 +1786,7 @@ port_loss <- reactive({
 
 ```
 
-O VaR da carteira é de `r port_var` e a perda esperada de `r port_loss` reais.
+O VaR da carteira é de `r port_var` e a perda esperada de R$ `r port_loss`
 
 # Conclusão
 
@@ -1718,7 +1795,9 @@ Foram ajustados modelos ARMA e GARCH(1,1) para as séries de retorno e volatilid
 
 # Referências
 
-- [IBOV]((http://www.b3.com.br/pt_br/market-data-e-indices/indices/indices-amplos/indice-ibovespa-ibovespa-composicao-da-carteira.htm))
-- Uribe, Paloma. Material da aula Financial Analytics
-- II - Alexander, Carol. Market Risk Analysis - Practical Financial Econometrics
-- IV - Alexander, Carol. Market Risk Analysis - Practical Financial Econometrics
+- [Ibovespa]((http://www.b3.com.br/pt_br/market-data-e-indices/indices/indices-amplos/indice-ibovespa-ibovespa-composicao-da-carteira.htm))
+- Uribe, P. Material da aula Financial Analytics
+- Tsay, R. Analysis of Financial Time Series
+- Tsay, R. An Introduction to Analysis of Financial Data with R
+- II - Alexander, C. Market Risk Analysis - Practical Financial Econometrics
+- IV - Alexander, C. Market Risk Analysis - Value at Risk Models
