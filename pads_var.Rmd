@@ -1,7 +1,8 @@
 ---
 title: "Volatilidade e VaR"
+subtitle: "Financial Analytics - Programa Avançado em Data Science - Insper"
 author: "Viviane Sanchez"
-date: "10/31/2020 - 11/13/2002"
+date: "31/10/2020 - 13/11/2020"
 output: 
   html_document:
     toc: true
